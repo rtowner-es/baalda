@@ -21,6 +21,7 @@ import { formattingKeymap } from "./formatting";
 import { listKeymap } from "./lists";
 import { livePreview } from "./livePreview";
 import { smartPaste, type SaveAttachment } from "./paste";
+import { tripleClickLine } from "./selection";
 import { slashCompletions } from "./slash";
 import { checkboxes } from "./tasks";
 import { editorTheme, markdownHighlight } from "./theme";
@@ -68,6 +69,9 @@ export function baseExtensions(opts: CreateEditorOptions): Extension[] {
     // Local history only for the non-CRDT path; yCollab supplies undo otherwise.
     ...(collab ? [] : [history()]),
     drawSelection(),
+    // Triple-click selects a line's content without its trailing newline, so
+    // the selection highlight doesn't bleed onto the next line.
+    tripleClickLine,
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
