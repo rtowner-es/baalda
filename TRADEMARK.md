@@ -23,7 +23,7 @@ confidence while the project keeps a clear identity.
   commercial purposes and to run your own hosted service.
 - **State compatibility or origin truthfully**, e.g. "built with
   Baalda", "powered by Baalda", "a fork of Baalda", or
-  "compatible with Baalda" — as long as it doesn't imply endorsement
+  "compatible with Baalda", as long as it doesn't imply endorsement
   or that your project *is* the official Baalda.
 - **Refer to the project by name** in articles, tutorials, talks, and
   documentation.
@@ -36,7 +36,7 @@ confidence while the project keeps a clear identity.
   give it a distinct name and make clear it is not the official project.
 - **Offer a hosted or commercial service under the Baalda name** or
   brand as if it were the official one.
-- **Use the Baalda logo or wordmark as your own** product/company logo.
+- **Use the Baalda logo or wordmark as your own** product or company logo.
 - **Register** the marks (or confusingly similar ones), or any related
   domain names, social handles, or app-store listings, as trademarks.
 - **Imply sponsorship, affiliation, or endorsement** by the Baalda
@@ -44,7 +44,7 @@ confidence while the project keeps a clear identity.
 
 ## Why this matters
 
-The code is meant to be copied, self-hosted, and improved — that's the
+The code is meant to be copied, self-hosted, and improved. That is the
 point of open source. The name exists so users can tell the official
 project (and any official hosted service) apart from forks and third-party
 offerings. Protecting the name protects users from confusion; it does not
@@ -52,8 +52,8 @@ restrict your right to the code.
 
 ## Questions or permission requests
 
-Email `naveedharri@gmail.com`. We're happy to grant reasonable requests — just
-ask.
+Email `naveedharri@gmail.com`. We're happy to grant reasonable requests,
+so just ask.
 
 ---
 

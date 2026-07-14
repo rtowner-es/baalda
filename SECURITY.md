@@ -11,9 +11,9 @@ issues, discussions, or pull requests.**
 
 Instead, use one of these private channels:
 
-1. **GitHub Private Vulnerability Reporting** (preferred) — go to the
+1. **GitHub Private Vulnerability Reporting** (preferred): go to the
    repository's **Security** tab → **Report a vulnerability**.
-2. **Email** — `naveedharri@gmail.com` with the subject line
+2. **Email**: `naveedharri@gmail.com` with the subject line
    `SECURITY: Baalda`.
 
 Please include, as far as you can:

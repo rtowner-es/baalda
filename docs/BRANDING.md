@@ -16,12 +16,12 @@ change on a future rebrand. Read this before touching anything that says "Baalda
 The project has already been renamed once. The first time around, the brand
 name had leaked into the database user/password, the Postgres container and volume names, the vault's
 hidden directory, localStorage keys, env var names, the JWT issuer, the MCP server name, and the
-keychain service — so a rename meant chasing the brand through data, not just docs and UI strings.
+keychain service. A rename therefore meant chasing the brand through data, not just docs and UI strings.
 That must never happen again. Every identifier that touches storage, protocols, or on-disk state now
 uses the permanent codename **"context"**, never the brand. Only three layers exist; a rebrand touches
 exactly one of them.
 
-## Layer 1 — BRAND ("Baalda"): cheap to change
+## Layer 1, BRAND ("Baalda"): cheap to change
 
 The brand name may appear **only** in these places. A rebrand touches this list and nothing else:
 
@@ -30,21 +30,21 @@ The brand name may appear **only** in these places. A rebrand touches this list 
   `CHANGELOG.md`, `CODE_OF_CONDUCT.md`, `LICENSE` copyright line.
 - `.github/**` (issue templates, PR template, `workflows/release.yml` release name/URLs).
 - `ee/README.md`, `ee/LICENSE`.
-- `app/apps/desktop/src-tauri/tauri.conf.json` — `productName` and window title.
-- `app/apps/desktop/index.html` — `<title>`.
-- `app/apps/desktop/src/lib/brand.ts` — the single brand-constants module; all desktop UI strings
+- `app/apps/desktop/src-tauri/tauri.conf.json`: `productName` and window title.
+- `app/apps/desktop/index.html`: `<title>`.
+- `app/apps/desktop/src/lib/brand.ts`: the single brand-constants module; all desktop UI strings
   import the brand name from here, never hardcode it.
-- `app/apps/server/src/brand.ts` — the single brand-constants module for any server-emitted strings
+- `app/apps/server/src/brand.ts`: the single brand-constants module for any server-emitted strings
   that are allowed to show the brand (e.g. email templates), never protocol identifiers.
-- `app/apps/desktop/src-tauri/src/commands.rs` — the user-visible managed notes root folder constant
+- `app/apps/desktop/src-tauri/src/commands.rs`: the user-visible managed notes root folder constant
   (`~/Baalda`).
-- `app/apps/desktop/src-tauri/Cargo.toml` — `description` / `authors`.
+- `app/apps/desktop/src-tauri/Cargo.toml`: `description` / `authors`.
 - The GitHub repo name and its URLs (`github.com/naveedharri/baalda`).
 
-**Rule: a rebrand touches only this list.** If you find the brand name anywhere else, that is a bug —
-move it into `brand.ts` (or the docs equivalent) and reference it from there.
+**Rule: a rebrand touches only this list.** If you find the brand name anywhere else, that is a bug.
+Move it into `brand.ts` (or the docs equivalent) and reference it from there.
 
-## Layer 2 — NEUTRAL codename "context": permanent, never rebrand
+## Layer 2, NEUTRAL codename "context": permanent, never rebrand
 
 "Context" is the permanent internal codename for the product idea (the shared, always-current context
 your team and your AI work from). It is brand-independent by design and must **never** be replaced by
@@ -62,13 +62,13 @@ the brand name. Everywhere it appears:
 - npm root package name: `context`.
 - Dev test account: `test@context.local` / `Context-Test-2026!`.
 
-**Rule: never put the brand in anything durable** — storage, identifiers, protocol names, paths, table
-names, endpoints. If a new piece of durable state needs a name, name it after the product idea
-("context"), not the brand of the week.
+**Rule: never put the brand in anything durable.** That means storage, identifiers, protocol names,
+paths, table names, and endpoints. If a new piece of durable state needs a name, name it after the
+product idea ("context"), not the brand of the week.
 
-## Layer 3 — FROZEN identifiers: set once, never again
+## Layer 3, FROZEN identifiers: set once, never again
 
-These two identifiers were set once, on this rebrand, and must **never change again** — not even on a
+These two identifiers were set once, on this rebrand, and must **never change again**, not even on a
 future rebrand:
 
 - Tauri bundle identifier: `com.baalda.context`
@@ -87,8 +87,8 @@ rebrands again, the bundle id and keychain service stay `com.baalda.context` for
    description/authors, docs prose, root community files, `.github/**`, `ee/`, and the GitHub repo
    name/URLs.
 3. Grep the whole repo (excluding `node_modules`, `target`, `.git`) for the old brand name and fix any
-   stray hit — it belongs in Layer 1 only.
+   stray hit. It belongs in Layer 1 only.
 4. Do **not** touch anything in Layer 2 (the `context` codename) or Layer 3 (the frozen bundle
-   id/keychain service). If a diff touches either, stop — that's the bug this policy exists to prevent.
+   id/keychain service). If a diff touches either, stop. That is the bug this policy exists to prevent.
 5. Verify: existing installs keep their keychain entries and vault data; only user-visible strings
    change.

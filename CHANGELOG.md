@@ -8,7 +8,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Changed
-- Rebranded the project to Baalda (brand only — the internal
+- Rebranded the project to Baalda (brand only; the internal
   "context" codename, storage identifiers, and bundle/keychain id are
   unchanged; see `docs/BRANDING.md`).
 
@@ -17,7 +17,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   `SECURITY.md`, `CODE_OF_CONDUCT.md`, `TRADEMARK.md`, and GitHub issue/PR
   templates.
 
-## [0.1.0] — 2026-07-14
+## [0.1.0] - 2026-07-14
 
 ### Added
 - Local-first desktop app (Tauri v2 + React/TS) with Markdown files as the

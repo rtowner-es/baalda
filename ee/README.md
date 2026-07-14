@@ -3,11 +3,11 @@
 > **This directory is _not_ open source.**
 
 Everything in this repository **outside** the `ee/` directory is licensed under
-the **[Apache License 2.0](../LICENSE)** — free to use, self-host, modify, and
+the **[Apache License 2.0](../LICENSE)**: free to use, self-host, modify, and
 build on commercially.
 
 Everything **inside** `ee/` is licensed under the separate
-**[Baalda Enterprise License](./LICENSE)** — a commercial, source-available
+**[Baalda Enterprise License](./LICENSE)**, a commercial, source-available
 license. In short: you may read, evaluate, and develop against this code, but
 **production use requires a paid subscription** or commercial agreement.
 
@@ -19,7 +19,7 @@ between the open core and the paid layer.
 
 ## Ground rule
 
-Enterprise features **add to** the open core — they must never remove or gate a
+Enterprise features **add to** the open core. They must never remove or gate a
 capability that already shipped under Apache-2.0. That's what keeps trust with
 open-source users.
 
@@ -29,7 +29,7 @@ open-source users.
   - TS/JS: `// SPDX-License-Identifier: LicenseRef-Baalda-Enterprise`
   - Rust:  `// SPDX-License-Identifier: LicenseRef-Baalda-Enterprise`
 - Do not import `ee/` code from the Apache-2.0 core in a way that makes the core
-  depend on it — the open build must work without this directory.
+  depend on it. The open build must work without this directory.
 
 ## Licensing enquiries
 

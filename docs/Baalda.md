@@ -2,21 +2,21 @@
 type: product-spec-index
 product: Baalda
 brand: Baalda
-status: specs-complete · build-not-started
+status: phases-0-3-complete · phase-4-planned
 date: 2026-07-13
 tags: [baalda, second-brain, spec, build-from-scratch]
 ---
 
 # Baalda
 
-**Context** is the product an owner buys — the shared, always-current context your team *and* your
+**Context** is the product an owner buys: the shared, always-current context your team *and* your
 AI both work from. **Baalda** is the brand. This folder is the build spec: what we are building,
 why, the chosen stack, and the live status.
 
 > [!success] The one-line pitch
 > An Obsidian-like, local-first "second brain" where your notes are plain `.md` files an AI can edit
 > directly **and** your team edits them together in real time. Every existing OSS tool does one or
-> the other. We build the tool that does both.
+> the other. We built the tool that does both.
 
 ---
 
@@ -24,22 +24,22 @@ why, the chosen stack, and the live status.
 
 Build **Baalda** from scratch, smallest-useful-thing first, nothing fancy. We reuse *patterns and
 architecture* from open-source projects (Noteriv, OpenKnowledge, Relay, Hocuspocus, Better Auth)
-but write our own code — we do not ship other people's code.
+but write our own code. We do not ship other people's code.
 
 The seed research: [[OSS Second Brain Scan]] (copy in `reference/`) scanned 41 OSS Obsidian-like apps
 against **12 requirements** and found **none satisfies all 12**. Those 12 are now our product
-requirements — see [[REQUIREMENTS]] for the full list and how each maps to a spec and phase. The
+requirements. See [[REQUIREMENTS]] for the full list and how each maps to a spec and phase. The
 reason no tool passed is structural, not a gap in the market:
 
 - **AI-editable plain `.md`** needs loose markdown on disk as the source of truth.
 - **Real-time collaboration** is always built on CRDTs (Yjs), whose state is an opaque binary blob.
 
-Those two are mutually exclusive across every candidate. The decision was never "which tool" — it
-was "which half do we build." We build the bridge between them. That bridge is the whole product.
+Those two are mutually exclusive across every candidate. The decision was never "which tool". It
+was "which half do we build". We build the bridge between them. That bridge is the whole product.
 
 ---
 
-## The crux (read this first — it's the entire design)
+## The crux (read this first, it is the entire design)
 
 `.md` files on disk are the **durable source of truth** (what the user, the AI, and git touch).
 A per-note **Yjs `Y.Text` holding the raw markdown string** is the **live source of truth** while a
@@ -63,10 +63,10 @@ round-trip lossless. Full detail: [[03-sync-engine]].
 |---|---|
 | Desktop shell | **Tauri v2** (Rust core; native iOS/Android from the same core) |
 | UI | **React + Vite + TypeScript** |
-| Editor | **CodeMirror 6** (`@codemirror/lang-markdown`) — the buffer *is* the file |
+| Editor | **CodeMirror 6** (`@codemirror/lang-markdown`); the buffer *is* the file |
 | File tree | **react-arborist** (virtualized) |
 | Filesystem | **Rust** `std::fs`/`tokio::fs` + debounced watcher |
-| CRDT | **Yjs** — `Y.Text`-of-markdown |
+| CRDT | **Yjs**, `Y.Text`-of-markdown |
 | Local index | **SQLite** (FTS5 search + backlinks + tags), derived/rebuildable |
 | Sync server | **Hocuspocus** (Yjs, Node) + **Postgres** |
 | Auth + teams | **Better Auth** (organization plugin) + argon2id + server sessions |
@@ -92,8 +92,9 @@ round-trip lossless. Full detail: [[03-sync-engine]].
 
 See [[STATUS]] for the live build checklist.
 
-- **Now:** Specs complete. Building not yet started.
-- **Next:** Phase 0 — single-user local app (open a folder of `.md`, tree, edit, save, index).
+- **Now:** Phases 0 through 3 are complete and wired end-to-end: local app, CRDT bridge, sync
+  server, and team collaboration, plus MCP, locks, join codes, semantic search, and a graph view.
+- **Next:** Phase 4 polish and launch decisions (WYSIWYG, vector search, OAuth, iOS).
 
 ---
 
@@ -105,7 +106,7 @@ See [[STATUS]] for the live build checklist.
    test it hard (golden round-trip tests, echo-loop tests, concurrent-edit tests).
 3. **Smallest useful thing first.** Ship a single-user local Obsidian-lite before any networking. Each
    phase is independently useful.
-4. **Rust owns disk; UI is stateless about files.** The web UI never touches the filesystem — it
+4. **Rust owns disk; UI is stateless about files.** The web UI never touches the filesystem. It
    calls typed Rust commands and subscribes to events.
 5. **Reuse patterns, not code.** Study the OSS references, own our implementation.
 6. **Self-hostable, no vendor lock-in.** Everything runs on our infra (Tauri + Node + Postgres).
