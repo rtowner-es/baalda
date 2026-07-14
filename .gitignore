@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+target/
+app/apps/desktop/gen/schemas/
+
+# Environment & secrets — never commit real keys
+.env
+.env.*
+!.env.example
+*.key
+*.key.pub
+*.local
+
+# Logs
+*.log
+logs/
+
+# OS / editor cruft
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Local app data (derived index + CRDT store)
+.opencontext/

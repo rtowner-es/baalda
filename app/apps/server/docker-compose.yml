@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: opencontext-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: opencontext
+      POSTGRES_PASSWORD: opencontext
+      POSTGRES_DB: opencontext
+    ports:
+      # Host 5439 -> container 5432 (avoids clashing with a local Postgres on 5432)
+      - "5439:5432"
+    volumes:
+      - opencontext_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opencontext -d opencontext"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  opencontext_pgdata:
