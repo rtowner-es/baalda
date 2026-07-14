@@ -1,5 +1,5 @@
 /* ============================================================
-   OpenContext — Design Tokens ("Atomize PLUS")
+   Baalda — Design Tokens ("Atomize PLUS")
    Light-first layered surfaces, 4pt grid, pill radii, soft diffuse
    shadows, violet primary. The same scale is mirrored for dark.
    All UI styling MUST consume these variables — no hardcoded colors.
@@ -38,7 +38,7 @@
   /* Links (secondary accent) */
   --link: #3b82f6;
 
-  /* Brand — OpenContext logo. Fixed identity colors (not themed): the
+  /* Brand — Baalda logo. Fixed identity colors (not themed): the
      bracket mark's dot + wordmark brackets are green; the mark tile is a
      dark app-icon square so the off-white brackets read in either theme. */
   --brand-green: #57bd9c;

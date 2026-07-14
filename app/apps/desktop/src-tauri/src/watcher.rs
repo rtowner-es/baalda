@@ -2,7 +2,7 @@
 //! into a background thread that drains a dirty-set after ~150ms of quiet, then
 //! incrementally re-indexes each changed path and emits `file-changed` to the UI.
 //!
-//! `.opencontext/` and dotfolders are ignored so the app's own state dir never
+//! `.context/` and dotfolders are ignored so the app's own state dir never
 //! feeds the note pipeline (spec 02 §2 hard rule).
 
 use crate::index::Index;

@@ -89,7 +89,7 @@ export const getLastVault = () => invoke<VaultInfo | null>("get_last_vault");
 // The app manages one root dir; each workspace gets a subfolder, and the active
 // workspace's folder is mirrored to `<root>/current` for external tools.
 
-/** Effective managed root (auto-initialized to ~/OpenContext on first call). */
+/** Effective managed root (auto-initialized to ~/Baalda on first call). */
 export const getWorkspaceRoot = () => invoke<string>("get_workspace_root");
 export const setWorkspaceRoot = (path: string) =>
   invoke<void>("set_workspace_root", { path });
@@ -178,7 +178,7 @@ export const getServerUrl = () => invoke<string | null>("get_server_url");
 export const setServerUrl = (url: string | null) =>
   invoke<void>("set_server_url", { url });
 
-// ---- Per-vault sync registry config (.opencontext/config.json) ----------------
+// ---- Per-vault sync registry config (.context/config.json) ----------------
 // Raw JSON string; the TS sync layer owns the schema (server vault id + doc-id
 // map) so it travels with the vault across devices (spec 03 §5).
 

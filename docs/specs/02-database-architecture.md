@@ -1,16 +1,16 @@
 ---
 type: spec
 spec: 02-database-architecture
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, database, sqlite, postgres, storage]
+tags: [baalda, spec, database, sqlite, postgres, storage]
 ---
 
 # 02 · Database Architecture
 
 Where data lives — on each client and on the server — and why nothing that matters lives *only* in a
-database. Overview: [[00-architecture-overview]]. Bridge detail: [[03-sync-engine]]. Index: [[OpenContext]].
+database. Overview: [[00-architecture-overview]]. Bridge detail: [[03-sync-engine]]. Index: [[Baalda]].
 
 ---
 
@@ -35,13 +35,13 @@ bodies inside SQLite — we copy their *index* design, never their body storage.
 VaultRoot/
 ├── Notes/ … .md                 # source of truth, human/AI/git-editable
 ├── attachments/ …               # images, pdfs, other blobs
-└── .opencontext/                   # hidden app dir — NEVER walked into the note pipeline
+└── .context/                   # hidden app dir — NEVER walked into the note pipeline
     ├── index.sqlite             # local index (this spec, §3)
     ├── crdt/                     # Yjs updates (or kept inside index.sqlite)
     └── config.json              # vault id, device id, server url, settings
 ```
 
-Hard rule (learned from Obsidian LocalSync): **never let the app's own `.opencontext/` dir get synced
+Hard rule (learned from Obsidian LocalSync): **never let the app's own `.context/` dir get synced
 or indexed as notes** — it corrupts the running client and its device identity. `list_tree` and the
 watcher skip it.
 

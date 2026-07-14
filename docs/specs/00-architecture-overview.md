@@ -1,10 +1,10 @@
 ---
 type: spec
 spec: 00-architecture-overview
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, architecture]
+tags: [baalda, spec, architecture]
 ---
 
 # 00 · Architecture Overview
@@ -12,7 +12,7 @@ tags: [opencontext, spec, architecture]
 The system-level view: how the four pillars fit, the one hard problem they all revolve around (the
 markdown↔CRDT bridge), the end-to-end data flow, and the principles every pillar must obey.
 
-Requirements this answers to: [[REQUIREMENTS]]. Pillar specs: [[01-desktop-app]] · [[02-database-architecture]] · [[03-sync-engine]] · [[04-team-collaboration]]. Index: [[OpenContext]].
+Requirements this answers to: [[REQUIREMENTS]]. Pillar specs: [[01-desktop-app]] · [[02-database-architecture]] · [[03-sync-engine]] · [[04-team-collaboration]]. Index: [[Baalda]].
 
 ---
 

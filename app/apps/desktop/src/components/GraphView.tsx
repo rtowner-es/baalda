@@ -1,40 +1,59 @@
-import { useEffect, useRef, useState } from "react";
-import { buildGraph, type Graph } from "../lib/graph/buildGraph";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Simulation, ForceLink } from "d3-force";
+import type { Graph } from "../lib/graph/buildGraph";
+import {
+  createSimulation,
+  configureForces,
+  nodeRadius,
+  centerWeight,
+  type SimNode,
+  type SimLink,
+} from "../lib/graph/simulation";
+import { assignColors, type LegendEntry } from "../lib/graph/graphColor";
+import {
+  loadSettings,
+  saveSettings,
+  DEFAULT_SETTINGS,
+  type GraphSettings,
+} from "../lib/graph/graphSettings";
+import { useGraphData } from "../lib/graph/useGraphData";
 import { useStore } from "../store";
+import { GraphControls } from "./GraphControls";
 import "./graph.css";
 
 // ---------------------------------------------------------------------------
-// Obsidian-style force-directed graph. No layout/physics dependency — this is
-// a small hand-rolled simulation (O(n^2) repulsion is fine up to a few hundred
-// nodes) rendered on a single <canvas>. React only owns load/empty/error state
-// and the header; the simulation + camera live in refs and drive the canvas
-// directly via requestAnimationFrame so dragging/zooming never triggers a
-// React re-render.
+// Immersive, physics-driven note graph. Physics is d3-force (see simulation.ts),
+// but we own the clock: the sim's internal timer is stopped and we call
+// sim.tick() ourselves inside a requestAnimationFrame loop so painting and
+// physics share one frame. React owns only React-y things — data loading, the
+// settings panel, header counts. Camera / hover / drag / positions all live in
+// refs so interaction never triggers a reconciliation pass.
 // ---------------------------------------------------------------------------
 
-interface SimNode {
-  id: string;
-  title: string;
-  path: string;
-  linkCount: number;
-  radius: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  /** Set while pinned (dragged) — physics stops moving the node on that axis. */
-  fx: number | null;
-  fy: number | null;
-}
+const MIN_SCALE = 0.08;
+const MAX_SCALE = 6;
+const CLICK_DRAG_THRESHOLD = 4; // px moved before a pointerdown counts as a drag
+const LABEL_FADE_START = 0.55; // camera.k at which labels begin to appear (labelScale 1)
+const LABEL_FADE_END = 1.1; // camera.k at which labels are fully opaque (labelScale 1)
+const DEFAULT_FONT_FAMILY = "sans-serif";
+const FALLBACK_ACCENT = "#7f73ff";
 
-interface SimEdge {
-  source: SimNode;
-  target: SimNode;
-}
+// Startup "come to life" burst.
+const INTRO_MS = 1200; // duration of the light flare + settle
+const INTRO_KICK = 28; // initial random velocity magnitude — the quick shake
+// Cool light edges are drawn with additive blending so dense regions bloom into
+// a galaxy core on the dark field.
+const EDGE_GLOW = "rgba(150,172,225,1)";
 
 type Drag =
   | { type: "pan"; lastX: number; lastY: number; moved: boolean }
-  | { type: "node"; node: SimNode; startX: number; startY: number; moved: boolean };
+  | {
+      type: "node";
+      node: SimNode;
+      startX: number;
+      startY: number;
+      moved: boolean;
+    };
 
 interface Camera {
   x: number;
@@ -43,76 +62,66 @@ interface Camera {
 }
 
 interface Colors {
-  nodeFill: string;
-  nodeActive: string;
   edge: string;
   edgeHighlight: string;
+  nodeFallback: string;
+  accent: string;
   label: string;
   labelActive: string;
 }
-
-const DEFAULT_FONT_FAMILY = "sans-serif";
-
-const ALPHA_DECAY = 0.0228;
-const ALPHA_MIN = 0.001;
-const VELOCITY_RETAIN = 0.6; // fraction of velocity kept per tick (damping)
-const CHARGE_STRENGTH = -1400;
-const LINK_STRENGTH = 0.06;
-const LINK_DISTANCE = 70;
-const GRAVITY_STRENGTH = 0.03;
-const MIN_RADIUS = 5;
-const RADIUS_FACTOR = 2.4;
-const MAX_RADIUS = 22;
-const MIN_SCALE = 0.08;
-const MAX_SCALE = 6;
-const CLICK_DRAG_THRESHOLD = 4; // px of movement before a pointerdown counts as a drag
-const LABEL_FADE_START = 0.55; // camera.k at which labels start to appear
-const LABEL_FADE_END = 1.1; // camera.k at which labels are fully opaque
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-function nodeRadius(linkCount: number): number {
-  return clamp(MIN_RADIUS + Math.sqrt(linkCount) * RADIUS_FACTOR, MIN_RADIUS, MAX_RADIUS);
-}
-
-/** Read the resolved (var()-free) colors the simulation needs to paint with. */
+/** Read the resolved (var()-free) colors the canvas paints with. */
 function readColors(el: Element): Colors {
   const cs = getComputedStyle(el);
   const get = (name: string) => cs.getPropertyValue(name).trim();
   return {
-    nodeFill: get("--text-tertiary") || "#9a9aa5",
-    nodeActive: get("--accent") || "#7f73ff",
-    edge: get("--border-strong") || "rgba(20,20,40,0.15)",
-    edgeHighlight: get("--accent") || "#7f73ff",
-    label: get("--text-secondary") || "#6b6b76",
-    labelActive: get("--text-primary") || "#1a1a1e",
+    edge: get("--border-strong") || "rgba(120,120,140,0.25)",
+    edgeHighlight: get("--accent") || FALLBACK_ACCENT,
+    nodeFallback: get("--text-tertiary") || "#9a9aa5",
+    accent: get("--accent") || FALLBACK_ACCENT,
+    label: get("--text-secondary") || "#8a8a94",
+    labelActive: get("--text-primary") || "#f0f0f4",
   };
 }
 
+/**
+ * Build the full SimNode array for a graph, reusing existing node objects so
+ * positions/velocities survive a data refresh. New nodes are seeded on a
+ * golden-angle spiral near the origin (never all stacked at 0,0, which would
+ * blow up the repulsion force on the first tick).
+ */
 function buildSimNodes(graph: Graph, previous: Map<string, SimNode>): SimNode[] {
   const n = Math.max(graph.nodes.length, 1);
-  const spreadRadius = 60 + Math.sqrt(n) * 40;
+  const spread = 60 + Math.sqrt(n) * 40;
+  const maxDegree = graph.nodes.reduce((m, node) => Math.max(m, node.linkCount), 0);
   return graph.nodes.map((node, i) => {
+    // Degree drives BOTH the visual size (bigger = more links) and the centering
+    // mass (heavier → stronger pull to the single center point).
+    const weight = centerWeight(node.linkCount, maxDegree);
     const prev = previous.get(node.id);
     if (prev) {
-      prev.linkCount = node.linkCount;
       prev.title = node.title;
       prev.path = node.path;
+      prev.linkCount = node.linkCount;
       prev.radius = nodeRadius(node.linkCount);
+      prev.weight = weight;
       return prev;
     }
-    // Golden-angle spiral placement for new nodes — avoids clumping everything
-    // at the origin (which would blow up the repulsion force on the first tick).
+    // Seed by weight: heavy nodes near the center, light ones farther out (on a
+    // golden-angle spoke) so they drift only a little into their resting orbit.
     const angle = i * 2.399963;
-    const r = spreadRadius * Math.sqrt((i + 1) / n);
+    const r = spread * (1 - Math.min(weight, 1)) + 12;
     return {
       id: node.id,
       title: node.title,
       path: node.path,
       linkCount: node.linkCount,
       radius: nodeRadius(node.linkCount),
+      weight,
       x: Math.cos(angle) * r,
       y: Math.sin(angle) * r,
       vx: 0,
@@ -127,95 +136,200 @@ export function GraphView({ onClose }: { onClose: () => void }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const [graph, setGraph] = useState<Graph | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { graph, loading, error, refresh } = useGraphData();
+
+  // Settings live in BOTH a ref (read from inside the imperative canvas/sim
+  // code, which can't see React state closures) and React state (drives the
+  // controls panel). applyPatch keeps them in lockstep.
+  const settingsRef = useRef<GraphSettings>(loadSettings());
+  const [settings, setSettings] = useState<GraphSettings>(settingsRef.current);
+
+  const [legend, setLegend] = useState<LegendEntry[]>([]);
+  const [showControls, setShowControls] = useState(false);
+  const [counts, setCounts] = useState({ nodes: 0, edges: 0 });
   const [refreshSpin, setRefreshSpin] = useState(false);
 
   const openNotePath = useStore((s) => s.openNote?.path ?? null);
   const openNotePathRef = useRef(openNotePath);
   openNotePathRef.current = openNotePath;
 
-  // Mutable simulation/camera/interaction state — deliberately NOT React state,
-  // so pan/zoom/drag/hover never pay for a reconciliation pass.
-  const sim = useRef({
-    nodes: [] as SimNode[],
-    edges: [] as SimEdge[],
+  // One d3 simulation for the component's whole life (survives re-renders and
+  // StrictMode remounts because refs persist).
+  const simRef = useRef<Simulation<SimNode, SimLink> | null>(null);
+  if (!simRef.current) simRef.current = createSimulation(settingsRef.current);
+
+  const graphRef = useRef<Graph | null>(null);
+
+  // Mutable, non-reactive state driving the canvas.
+  const S = useRef({
     nodesById: new Map<string, SimNode>(),
-    alpha: 0,
+    visNodes: [] as SimNode[],
+    // Same array objects we hand to forceLink().links(): d3 rewrites their
+    // source/target from id strings to SimNode refs IN PLACE, so after the call
+    // we can read them as resolved links for drawing.
+    visEdges: [] as SimLink[],
+    colorById: new Map<string, string>(),
     camera: { x: 0, y: 0, k: 1 } as Camera,
     hoveredId: null as string | null,
     drag: null as Drag | null,
     rafId: null as number | null,
     needsDraw: true,
+    // Startup "come to life" burst: timestamp when the graph first got data, and
+    // a one-time flag so the energizing velocity kick is applied only once.
+    introStart: 0,
+    introKicked: false,
     colors: {
-      nodeFill: "#9a9aa5",
-      nodeActive: "#7f73ff",
-      edge: "rgba(20,20,40,0.15)",
-      edgeHighlight: "#7f73ff",
-      label: "#6b6b76",
-      labelActive: "#1a1a1e",
+      edge: "rgba(120,120,140,0.25)",
+      edgeHighlight: FALLBACK_ACCENT,
+      nodeFallback: "#9a9aa5",
+      accent: FALLBACK_ACCENT,
+      label: "#8a8a94",
+      labelActive: "#f0f0f4",
     } as Colors,
     fontFamily: DEFAULT_FONT_FAMILY,
   }).current;
 
+  // Set by the canvas effect once it defines the real draw scheduler. Starts as
+  // a no-op so callers (rebuild, applyPatch) are safe before that effect runs.
   const requestDrawRef = useRef<() => void>(() => {});
+  // Recomputes per-node colors from the current visible set + accent, and pushes
+  // the legend to React state. Also set by the canvas effect (needs S.accent).
+  const recolorRef = useRef<() => void>(() => {});
 
-  // ---- Load data ----
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const g = await buildGraph();
-      setGraph(g);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
+  // Recompute visible nodes/edges from the latest graph + filter settings, feed
+  // them to the simulation, refresh colors, and reheat. Called on data change
+  // and whenever a filter setting changes.
+  const rebuild = useCallback(() => {
+    const sim = simRef.current;
+    const g = graphRef.current;
+    if (!sim || !g) return;
+    const s = settingsRef.current;
+
+    const all = buildSimNodes(g, S.nodesById);
+    S.nodesById = new Map(all.map((n) => [n.id, n]));
+
+    // Filter DIMS via search (draw-time); here we only HIDE by degree/orphans.
+    const visNodes = all.filter(
+      (n) =>
+        !(s.hideOrphans && n.linkCount === 0) && n.linkCount >= s.minDegree,
+    );
+    const visible = new Set(visNodes.map((n) => n.id));
+    const links: SimLink[] = g.edges
+      .filter((e) => visible.has(e.source) && visible.has(e.target))
+      .map((e) => ({ source: e.source, target: e.target }));
+
+    // d3 init order: nodes() BEFORE link.links() so the link force resolves
+    // {source,target} ids against the current node array.
+    sim.nodes(visNodes);
+    (sim.force("link") as ForceLink<SimNode, SimLink>).links(links);
+    sim.alpha(1);
+
+    // First time real data lands: light the graph up. Give every node a random
+    // velocity impulse (the "quick shake") and start the intro clock so the
+    // draw loop paints the light flare from all nodes, then it all settles.
+    if (!S.introKicked && visNodes.length > 0) {
+      for (const node of visNodes) {
+        const a = Math.random() * Math.PI * 2;
+        const m = Math.random() * INTRO_KICK;
+        node.vx += Math.cos(a) * m;
+        node.vy += Math.sin(a) * m;
+      }
+      S.introKicked = true;
+      S.introStart = performance.now();
     }
-  };
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    S.visNodes = visNodes;
+    S.visEdges = links; // now resolved in place by forceLink
 
-  // Merge freshly-built graph data into the running simulation, preserving
-  // positions of nodes that survive a refresh and reheating so new/changed
-  // nodes settle in.
-  useEffect(() => {
-    if (!graph) return;
-    const nodes = buildSimNodes(graph, sim.nodesById);
-    const nodesById = new Map(nodes.map((n) => [n.id, n]));
-    const edges: SimEdge[] = [];
-    for (const e of graph.edges) {
-      const source = nodesById.get(e.source);
-      const target = nodesById.get(e.target);
-      if (source && target) edges.push({ source, target });
-    }
-    sim.nodes = nodes;
-    sim.edges = edges;
-    sim.nodesById = nodesById;
-    sim.alpha = 1;
+    const accent = S.colors.accent || FALLBACK_ACCENT;
+    const { colorById, legend: lg } = assignColors(visNodes, s.colorMode, accent);
+    S.colorById = colorById;
+    setLegend(lg);
+    setCounts({ nodes: visNodes.length, edges: links.length });
+
     requestDrawRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph]);
+  }, [S]);
 
-  // ---- Canvas setup: runs once, everything else flows through refs ----
+  // Merge a settings patch: persist, update both mirrors, and apply live with
+  // the cheapest reaction the change requires.
+  const applyPatch = useCallback(
+    (patch: Partial<GraphSettings>) => {
+      const next = { ...settingsRef.current, ...patch };
+      settingsRef.current = next;
+      saveSettings(next);
+      setSettings(next);
+
+      const sim = simRef.current;
+      if (!sim) return;
+
+      const keys = Object.keys(patch) as (keyof GraphSettings)[];
+      const touchesFilter = keys.some(
+        (k) => k === "minDegree" || k === "hideOrphans",
+      );
+      const touchesForces = keys.some(
+        (k) =>
+          k === "charge" ||
+          k === "linkDistance" ||
+          k === "linkStrength" ||
+          k === "gravity",
+      );
+
+      if (touchesFilter) {
+        // Fewer/more nodes: rebuild the sim data and let it re-settle.
+        rebuild();
+        return;
+      }
+      if (touchesForces) {
+        // Physics changed: re-apply params without disturbing positions, then
+        // gently reheat so the layout eases into its new equilibrium.
+        configureForces(sim, next);
+        sim.alpha(Math.max(sim.alpha(), 0.3));
+        requestDrawRef.current();
+        return;
+      }
+      // Visual-only (nodeSize / edgeThickness / labelScale / colorMode / search):
+      // no reheat — just recolor if needed and repaint one frame.
+      if (keys.includes("colorMode")) recolorRef.current();
+      requestDrawRef.current();
+    },
+    [rebuild],
+  );
+
+  const onReset = useCallback(() => {
+    const next = { ...DEFAULT_SETTINGS };
+    settingsRef.current = next;
+    saveSettings(next);
+    setSettings(next);
+    const sim = simRef.current;
+    if (sim) {
+      configureForces(sim, next);
+      rebuild(); // recolors + reheats with the reset filter/appearance
+    }
+  }, [rebuild]);
+
+  // Feed freshly-built graph data into the running simulation.
+  useEffect(() => {
+    graphRef.current = graph;
+    if (graph) rebuild();
+  }, [graph, rebuild]);
+
+  // ---- Canvas setup: runs once; everything else flows through refs. ----
   useEffect(() => {
     const wrap = wrapRef.current;
     const canvas = canvasRef.current;
     if (!wrap || !canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const sim = simRef.current!;
 
     let width = 0;
     let height = 0;
     let dpr = window.devicePixelRatio || 1;
 
-    sim.colors = readColors(wrap);
-    const bodyFont = getComputedStyle(wrap).getPropertyValue("--font-body").trim();
-    sim.fontFamily = bodyFont || DEFAULT_FONT_FAMILY;
+    S.colors = readColors(wrap);
+    S.fontFamily =
+      getComputedStyle(wrap).getPropertyValue("--font-body").trim() ||
+      DEFAULT_FONT_FAMILY;
 
     function resize() {
       const rect = wrap!.getBoundingClientRect();
@@ -231,9 +345,26 @@ export function GraphView({ onClose }: { onClose: () => void }) {
     ro.observe(wrap);
     resize();
 
-    // Refresh cached colors when the light/dark toggle flips data-theme.
+    // Recompute per-node colors + legend. Registered so applyPatch/theme changes
+    // can trigger it (degree/uniform palettes depend on the live accent color).
+    function recolor() {
+      const s = settingsRef.current;
+      const accent = S.colors.accent || FALLBACK_ACCENT;
+      const { colorById, legend: lg } = assignColors(
+        S.visNodes,
+        s.colorMode,
+        accent,
+      );
+      S.colorById = colorById;
+      setLegend(lg);
+    }
+    recolorRef.current = recolor;
+
+    // Re-read colors when the light/dark toggle flips data-theme, then recolor
+    // (accent-derived palettes must follow the theme).
     const themeObserver = new MutationObserver(() => {
-      sim.colors = readColors(wrap!);
+      S.colors = readColors(wrap!);
+      recolor();
       requestDraw();
     });
     themeObserver.observe(document.documentElement, {
@@ -243,20 +374,21 @@ export function GraphView({ onClose }: { onClose: () => void }) {
 
     function screenToWorld(sx: number, sy: number) {
       return {
-        x: (sx - width / 2 - sim.camera.x) / sim.camera.k,
-        y: (sy - height / 2 - sim.camera.y) / sim.camera.k,
+        x: (sx - width / 2 - S.camera.x) / S.camera.k,
+        y: (sy - height / 2 - S.camera.y) / S.camera.k,
       };
     }
 
     function nodeAt(sx: number, sy: number): SimNode | null {
       const { x: wx, y: wy } = screenToWorld(sx, sy);
+      const nodeScale = settingsRef.current.nodeSize;
       let best: SimNode | null = null;
       let bestDist = Infinity;
-      for (const node of sim.nodes) {
+      for (const node of S.visNodes) {
         const dx = node.x - wx;
         const dy = node.y - wy;
         const d = Math.sqrt(dx * dx + dy * dy);
-        const hitRadius = node.radius + 4 / sim.camera.k;
+        const hitRadius = node.radius * nodeScale + 4 / S.camera.k;
         if (d <= hitRadius && d < bestDist) {
           best = node;
           bestDist = d;
@@ -265,165 +397,180 @@ export function GraphView({ onClose }: { onClose: () => void }) {
       return best;
     }
 
-    // ---- Physics ----
-    function tick(): boolean {
-      if (sim.alpha <= ALPHA_MIN) return false;
-      sim.alpha += (0 - sim.alpha) * ALPHA_DECAY;
-      const nodes = sim.nodes;
-
-      // Repulsion between every pair (O(n^2) — fine up to a few hundred nodes).
-      for (let i = 0; i < nodes.length; i++) {
-        const a = nodes[i];
-        for (let j = i + 1; j < nodes.length; j++) {
-          const b = nodes[j];
-          let dx = a.x - b.x;
-          let dy = a.y - b.y;
-          let distSq = dx * dx + dy * dy;
-          if (distSq < 0.01) {
-            dx = (Math.random() - 0.5) * 0.1;
-            dy = (Math.random() - 0.5) * 0.1;
-            distSq = dx * dx + dy * dy;
-          }
-          const dist = Math.sqrt(distSq);
-          const force = (CHARGE_STRENGTH * sim.alpha) / distSq;
-          const fx = (dx / dist) * force;
-          const fy = (dy / dist) * force;
-          a.vx += fx;
-          a.vy += fy;
-          b.vx -= fx;
-          b.vy -= fy;
-        }
-      }
-
-      // Spring attraction along edges.
-      for (const edge of sim.edges) {
-        const dx = edge.target.x - edge.source.x;
-        const dy = edge.target.y - edge.source.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const diff = ((dist - LINK_DISTANCE) / dist) * LINK_STRENGTH * sim.alpha;
-        const fx = dx * diff;
-        const fy = dy * diff;
-        edge.source.vx += fx;
-        edge.source.vy += fy;
-        edge.target.vx -= fx;
-        edge.target.vy -= fy;
-      }
-
-      // Centering gravity.
-      for (const node of nodes) {
-        node.vx += -node.x * GRAVITY_STRENGTH * sim.alpha;
-        node.vy += -node.y * GRAVITY_STRENGTH * sim.alpha;
-      }
-
-      // Integrate + damping; pinned (dragged) nodes snap to their fixed point.
-      for (const node of nodes) {
-        if (node.fx != null && node.fy != null) {
-          node.x = node.fx;
-          node.y = node.fy;
-          node.vx = 0;
-          node.vy = 0;
-          continue;
-        }
-        node.vx *= VELOCITY_RETAIN;
-        node.vy *= VELOCITY_RETAIN;
-        node.x += node.vx;
-        node.y += node.vy;
-      }
-
-      return sim.alpha > ALPHA_MIN;
-    }
-
-    function reheat(amount = 0.5) {
-      sim.alpha = Math.max(sim.alpha, amount);
-      requestDraw();
-    }
-
     // ---- Drawing ----
     function draw() {
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx!.clearRect(0, 0, width, height);
+      ctx!.clearRect(0, 0, width, height); // transparent → CSS backdrop shows through
       ctx!.save();
-      ctx!.translate(width / 2 + sim.camera.x, height / 2 + sim.camera.y);
-      ctx!.scale(sim.camera.k, sim.camera.k);
+      ctx!.translate(width / 2 + S.camera.x, height / 2 + S.camera.y);
+      ctx!.scale(S.camera.k, S.camera.k);
 
-      const colors = sim.colors;
-      const hovered = sim.hoveredId ? sim.nodesById.get(sim.hoveredId) ?? null : null;
+      const s = settingsRef.current;
+      const colors = S.colors;
+      const k = S.camera.k;
+
+      const hovered = S.hoveredId
+        ? S.nodesById.get(S.hoveredId) ?? null
+        : null;
       const neighbors = new Set<string>();
       if (hovered) {
         neighbors.add(hovered.id);
-        for (const e of sim.edges) {
-          if (e.source.id === hovered.id) neighbors.add(e.target.id);
-          if (e.target.id === hovered.id) neighbors.add(e.source.id);
+        for (const e of S.visEdges) {
+          const src = e.source as SimNode;
+          const tgt = e.target as SimNode;
+          if (src.id === hovered.id) neighbors.add(tgt.id);
+          if (tgt.id === hovered.id) neighbors.add(src.id);
         }
       }
 
-      const labelAlpha = clamp(
-        (sim.camera.k - LABEL_FADE_START) / (LABEL_FADE_END - LABEL_FADE_START),
-        0,
-        1,
-      );
+      const search = s.search.trim().toLowerCase();
+      const matches = (n: SimNode) =>
+        search === "" || n.title.toLowerCase().includes(search);
 
-      // Edges.
-      for (const edge of sim.edges) {
-        const isNeighborEdge =
-          !hovered || edge.source.id === hovered.id || edge.target.id === hovered.id;
+      // Label fade threshold scales inversely with labelScale — a higher
+      // "Labels" setting reveals labels at lower zoom; 0 hides all but hover/open.
+      const ls = s.labelScale;
+      const start = LABEL_FADE_START / Math.max(ls, 0.0001);
+      const end = LABEL_FADE_END / Math.max(ls, 0.0001);
+      const zoomLabelAlpha =
+        ls <= 0 ? 0 : clamp((k - start) / (end - start), 0, 1);
+
+      // Startup burst: everything flares with extra light, then eases to rest.
+      const nowT = performance.now();
+      const introT =
+        S.introStart > 0 ? clamp((nowT - S.introStart) / INTRO_MS, 0, 1) : 1;
+      const introEase = 1 - Math.pow(1 - introT, 3); // easeOutCubic
+      const glowBoost = 1 + (1 - introEase) * 2.4; // nodes are brightest at birth
+
+      const nodeScale = s.nodeSize;
+
+      // ---- Edges (additive → dense regions bloom into a galaxy core) ----
+      ctx!.globalCompositeOperation = "lighter";
+      const edgeWidth = s.edgeThickness / k;
+      for (const e of S.visEdges) {
+        const src = e.source as SimNode;
+        const tgt = e.target as SimNode;
+        const incident =
+          !hovered || src.id === hovered.id || tgt.id === hovered.id;
         ctx!.beginPath();
-        ctx!.moveTo(edge.source.x, edge.source.y);
-        ctx!.lineTo(edge.target.x, edge.target.y);
-        ctx!.strokeStyle = isNeighborEdge ? colors.edgeHighlight : colors.edge;
-        ctx!.globalAlpha = hovered ? (isNeighborEdge ? 0.85 : 0.08) : 0.45;
-        ctx!.lineWidth = (isNeighborEdge && hovered ? 1.4 : 1) / sim.camera.k;
+        ctx!.moveTo(src.x, src.y);
+        ctx!.lineTo(tgt.x, tgt.y);
+        ctx!.strokeStyle = incident ? colors.edgeHighlight : EDGE_GLOW;
+        ctx!.globalAlpha = hovered
+          ? incident
+            ? 0.85
+            : 0.02
+          : 0.075 * (0.4 + 0.6 * introEase);
+        ctx!.lineWidth = (incident && hovered ? 1.6 : 1) * edgeWidth;
         ctx!.stroke();
       }
-      ctx!.globalAlpha = 1;
 
-      // Nodes + labels.
-      for (const node of sim.nodes) {
+      // ---- Node glow halos (additive) — the "light" each node emits ----
+      for (const node of S.visNodes) {
+        if (hovered != null && !neighbors.has(node.id)) continue;
+        if (!matches(node)) continue; // dimmed/filtered nodes don't emit light
+        const base = node.radius * nodeScale;
+        const color =
+          node.path === openNotePathRef.current
+            ? colors.accent
+            : S.colorById.get(node.id) ?? colors.nodeFallback;
+        ctx!.fillStyle = color;
+        ctx!.globalAlpha = clamp(0.18 * glowBoost, 0, 0.85);
+        ctx!.beginPath();
+        ctx!.arc(node.x, node.y, base * 1.7, 0, Math.PI * 2);
+        ctx!.fill();
+      }
+
+      // ---- Node cores + labels (opaque, true folder color) ----
+      ctx!.globalCompositeOperation = "source-over";
+      for (const node of S.visNodes) {
         const isOpen = node.path === openNotePathRef.current;
         const isHovered = hovered?.id === node.id;
-        const isDimmed = hovered != null && !neighbors.has(node.id);
-        const r = isHovered ? node.radius * 1.35 : node.radius;
+        const dimByHover = hovered != null && !neighbors.has(node.id);
+        const dimBySearch = !matches(node);
+        const dimmed = dimByHover || dimBySearch;
 
-        ctx!.globalAlpha = isDimmed ? 0.25 : 1;
+        const base = node.radius * nodeScale;
+        const r = isHovered ? base * 1.35 : base;
+
+        ctx!.globalAlpha = dimmed ? 0.22 : 1;
         ctx!.beginPath();
         ctx!.arc(node.x, node.y, r, 0, Math.PI * 2);
-        ctx!.fillStyle = isOpen ? colors.nodeActive : colors.nodeFill;
+        ctx!.fillStyle = isOpen
+          ? colors.accent
+          : S.colorById.get(node.id) ?? colors.nodeFallback;
         ctx!.fill();
 
-        const showLabel = labelAlpha > 0.01 || isHovered;
-        if (showLabel) {
-          const alpha = isHovered ? 1 : labelAlpha * (isDimmed ? 0.25 : 1);
+        // The open note gets an accent halo ring so it's findable at a glance.
+        if (isOpen) {
+          ctx!.lineWidth = 2 / k;
+          ctx!.strokeStyle = colors.accent;
+          ctx!.globalAlpha = dimmed ? 0.4 : 1;
+          ctx!.beginPath();
+          ctx!.arc(node.x, node.y, r + 3 / k, 0, Math.PI * 2);
+          ctx!.stroke();
+        }
+
+        // Labels: fade in with zoom, always shown on hover and for the open note.
+        const wantLabel = isHovered || isOpen || zoomLabelAlpha > 0.01;
+        if (wantLabel) {
+          let alpha = isHovered || isOpen ? 1 : zoomLabelAlpha;
+          if (dimBySearch && !isHovered) alpha *= 0.2;
+          else if (dimByHover) alpha *= 0.25;
           if (alpha > 0.01) {
             ctx!.globalAlpha = alpha;
             ctx!.fillStyle = isOpen ? colors.labelActive : colors.label;
-            ctx!.font = `${11 / sim.camera.k}px ${sim.fontFamily}`;
+            ctx!.font = `${11 / k}px ${S.fontFamily}`;
             ctx!.textAlign = "center";
             ctx!.textBaseline = "top";
-            ctx!.fillText(node.title, node.x, node.y + r + 3 / sim.camera.k);
+            ctx!.fillText(node.title, node.x, node.y + r + 3 / k);
           }
         }
       }
       ctx!.globalAlpha = 1;
-
       ctx!.restore();
+
+      // ---- Startup light flash (screen space, additive) ----
+      if (introT < 1) {
+        ctx!.save();
+        ctx!.globalCompositeOperation = "lighter";
+        const flash = Math.pow(1 - introEase, 2) * 0.4;
+        const cx = width / 2;
+        const cy = height * 0.44;
+        const g = ctx!.createRadialGradient(
+          cx,
+          cy,
+          0,
+          cx,
+          cy,
+          Math.max(width, height) * 0.6,
+        );
+        g.addColorStop(0, `rgba(160,180,235,${flash})`);
+        g.addColorStop(1, "rgba(160,180,235,0)");
+        ctx!.fillStyle = g;
+        ctx!.fillRect(0, 0, width, height);
+        ctx!.restore();
+      }
     }
 
+    // Single frame clock: advance physics one tick, paint, and keep looping
+    // while the sim is still warm so the layout keeps settling (and recovers
+    // from disturbances) even when the user isn't touching anything.
     function loop() {
-      sim.rafId = null;
-      const stillSimulating = tick();
-      if (stillSimulating) sim.needsDraw = true;
-      if (sim.needsDraw) {
-        draw();
-        sim.needsDraw = false;
-      }
-      if (stillSimulating) {
-        sim.rafId = requestAnimationFrame(loop);
+      S.rafId = null;
+      sim.tick();
+      draw();
+      S.needsDraw = false;
+      const introActive =
+        S.introStart > 0 && performance.now() - S.introStart < INTRO_MS;
+      if (sim.alpha() > sim.alphaMin() || introActive) {
+        S.rafId = requestAnimationFrame(loop);
       }
     }
 
     function requestDraw() {
-      sim.needsDraw = true;
-      if (sim.rafId == null) sim.rafId = requestAnimationFrame(loop);
+      S.needsDraw = true;
+      if (S.rafId == null) S.rafId = requestAnimationFrame(loop);
     }
     requestDrawRef.current = requestDraw;
 
@@ -440,10 +587,10 @@ export function GraphView({ onClose }: { onClose: () => void }) {
       const sy = e.clientY - rect.top;
       const before = screenToWorld(sx, sy);
       const zoomFactor = Math.exp(-e.deltaY * 0.0015);
-      const newK = clamp(sim.camera.k * zoomFactor, MIN_SCALE, MAX_SCALE);
-      sim.camera.k = newK;
-      sim.camera.x = sx - width / 2 - before.x * newK;
-      sim.camera.y = sy - height / 2 - before.y * newK;
+      const newK = clamp(S.camera.k * zoomFactor, MIN_SCALE, MAX_SCALE);
+      S.camera.k = newK;
+      S.camera.x = sx - width / 2 - before.x * newK;
+      S.camera.y = sy - height / 2 - before.y * newK;
       requestDraw();
     }
 
@@ -451,28 +598,37 @@ export function GraphView({ onClose }: { onClose: () => void }) {
       const { x: sx, y: sy } = clientToLocal(e);
       const hit = nodeAt(sx, sy);
       canvas!.setPointerCapture(e.pointerId);
+      canvas!.classList.add("is-dragging");
       if (hit) {
+        // Pin the grabbed node and keep the sim warm so neighbors react live.
         hit.fx = hit.x;
         hit.fy = hit.y;
-        sim.drag = { type: "node", node: hit, startX: e.clientX, startY: e.clientY, moved: false };
-        canvas!.classList.add("is-dragging");
+        sim.alphaTarget(0.3);
+        S.drag = {
+          type: "node",
+          node: hit,
+          startX: e.clientX,
+          startY: e.clientY,
+          moved: false,
+        };
+        requestDraw();
       } else {
-        sim.drag = { type: "pan", lastX: e.clientX, lastY: e.clientY, moved: false };
-        canvas!.classList.add("is-dragging");
+        S.drag = { type: "pan", lastX: e.clientX, lastY: e.clientY, moved: false };
       }
     }
 
     function handlePointerMove(e: PointerEvent) {
       const { x: sx, y: sy } = clientToLocal(e);
-      const drag = sim.drag;
+      const drag = S.drag;
       if (drag) {
         if (drag.type === "pan") {
           const dx = e.clientX - drag.lastX;
           const dy = e.clientY - drag.lastY;
           if (dx !== 0 || dy !== 0) {
-            drag.moved = drag.moved || Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD;
-            sim.camera.x += dx;
-            sim.camera.y += dy;
+            drag.moved =
+              drag.moved || Math.hypot(dx, dy) > CLICK_DRAG_THRESHOLD;
+            S.camera.x += dx;
+            S.camera.y += dy;
             drag.lastX = e.clientX;
             drag.lastY = e.clientY;
             requestDraw();
@@ -482,35 +638,48 @@ export function GraphView({ onClose }: { onClose: () => void }) {
           drag.node.fx = wx;
           drag.node.fy = wy;
           if (!drag.moved) {
-            const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+            const dist = Math.hypot(
+              e.clientX - drag.startX,
+              e.clientY - drag.startY,
+            );
             if (dist > CLICK_DRAG_THRESHOLD) drag.moved = true;
           }
-          reheat(0.4);
+          // Loop is already running (alphaTarget 0.3); nudge in case it stalled.
+          requestDraw();
         }
         return;
       }
       const hit = nodeAt(sx, sy);
       const hitId = hit?.id ?? null;
-      if (hitId !== sim.hoveredId) {
-        sim.hoveredId = hitId;
+      if (hitId !== S.hoveredId) {
+        S.hoveredId = hitId;
         canvas!.classList.toggle("is-hovering-node", hitId != null);
         requestDraw();
       }
     }
 
     function endDrag(e: PointerEvent) {
-      const drag = sim.drag;
+      const drag = S.drag;
       canvas!.classList.remove("is-dragging");
-      if (drag?.type === "node" && !drag.moved) {
-        // A click, not a drag: unpin and open the note.
+      S.drag = null;
+      if (drag?.type === "node") {
+        sim.alphaTarget(0); // stop feeding energy; let it cool naturally
+        // Release the pin either way — a dropped node is handed back to the
+        // forces so gravity pulls it toward the center and the whole graph
+        // re-stabilizes. Nothing stays where you put it.
         drag.node.fx = null;
         drag.node.fy = null;
-        const path = drag.node.path;
-        sim.drag = null;
-        useStore.getState().openNoteByPath(path).then(onClose);
-        return;
+        if (!drag.moved) {
+          // A click, not a drag: open the note.
+          const path = drag.node.path;
+          useStore.getState().openNoteByPath(path).then(onClose);
+        } else {
+          // A real drag: a gentle reheat so the displaced node drifts home
+          // slowly and calmly (low energy = slow return, not a snap-back).
+          sim.alpha(Math.max(sim.alpha(), 0.25));
+          requestDrawRef.current();
+        }
       }
-      sim.drag = null;
       try {
         canvas!.releasePointerCapture(e.pointerId);
       } catch {
@@ -529,7 +698,15 @@ export function GraphView({ onClose }: { onClose: () => void }) {
     return () => {
       ro.disconnect();
       themeObserver.disconnect();
-      if (sim.rafId != null) cancelAnimationFrame(sim.rafId);
+      if (S.rafId != null) {
+        cancelAnimationFrame(S.rafId);
+      }
+      // CRUCIAL: reset so a stale id doesn't wedge requestDraw's `== null`
+      // guard on a StrictMode remount.
+      S.rafId = null;
+      sim.stop();
+      requestDrawRef.current = () => {};
+      recolorRef.current = () => {};
       canvas.removeEventListener("wheel", handleWheel);
       canvas.removeEventListener("pointerdown", handlePointerDown);
       canvas.removeEventListener("pointermove", handlePointerMove);
@@ -550,22 +727,31 @@ export function GraphView({ onClose }: { onClose: () => void }) {
 
   const handleRefresh = () => {
     setRefreshSpin(true);
-    void load().finally(() => setTimeout(() => setRefreshSpin(false), 700));
+    refresh();
+    setTimeout(() => setRefreshSpin(false), 700);
   };
 
-  const nodeCount = graph?.nodes.length ?? 0;
-  const edgeCount = graph?.edges.length ?? 0;
-  const showEmpty = !loading && !error && graph != null && edgeCount === 0;
+  const showEmpty =
+    !loading && !error && graph != null && counts.edges === 0;
 
   return (
     <div className="graph-view" ref={wrapRef}>
       <div className="graph-header">
         <span className="graph-title">Graph</span>
         <span className="graph-counts">
-          {nodeCount} {nodeCount === 1 ? "note" : "notes"} · {edgeCount}{" "}
-          {edgeCount === 1 ? "link" : "links"}
+          {counts.nodes} {counts.nodes === 1 ? "note" : "notes"} · {counts.edges}{" "}
+          {counts.edges === 1 ? "link" : "links"}
         </span>
         <span className="graph-header-spacer" />
+        <button
+          className={`graph-icon-btn${showControls ? " is-active" : ""}`}
+          title="Graph settings"
+          aria-label="Graph settings"
+          aria-pressed={showControls}
+          onClick={() => setShowControls((v) => !v)}
+        >
+          ⚙
+        </button>
         <button
           className={`graph-icon-btn${refreshSpin ? " is-spinning" : ""}`}
           title="Refresh graph"
@@ -586,6 +772,16 @@ export function GraphView({ onClose }: { onClose: () => void }) {
 
       <div className="graph-canvas-wrap">
         <canvas className="graph-canvas" ref={canvasRef} />
+
+        {showControls && (
+          <GraphControls
+            settings={settings}
+            onChange={applyPatch}
+            onReset={onReset}
+            legend={legend}
+          />
+        )}
+
         {loading && (
           <div className="graph-state">
             <div className="graph-state-card">Loading graph…</div>

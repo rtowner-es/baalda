@@ -2,7 +2,7 @@
 //!
 //! Better Auth session tokens are the keys to a user's workspace, so they must
 //! never live in `localStorage` or any plaintext file. They live in the OS
-//! keychain under the service `com.opencontext.context`, keyed by a caller-supplied
+//! keychain under the service `com.baalda.context`, keyed by a caller-supplied
 //! `service_key` (e.g. `session:<serverUrl>`). The `keyring` crate maps this to
 //! the macOS Keychain (Security framework) / Windows Credential Manager / the
 //! Secret Service on Linux.
@@ -12,8 +12,12 @@
 
 use crate::error::{AppError, AppResult};
 
-/// Keychain "service" namespace for all OpenContext secrets.
-pub const SERVICE: &str = "com.opencontext.context";
+/// Keychain "service" namespace for all Baalda secrets.
+///
+/// FROZEN (Layer 3): set once, never changed on a future rebrand — changing it
+/// would orphan every user's already-stored keychain entries (precedent: Slack
+/// still ships under `com.tinyspeck.*`).
+pub const SERVICE: &str = "com.baalda.context";
 
 /// A minimal secret store, abstracted so tests can swap in an in-memory fake.
 pub trait SecretStore {

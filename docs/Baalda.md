@@ -1,16 +1,16 @@
 ---
 type: product-spec-index
-product: OpenContext
-brand: OpenContext
+product: Baalda
+brand: Baalda
 status: specs-complete · build-not-started
 date: 2026-07-13
-tags: [opencontext, second-brain, spec, build-from-scratch]
+tags: [baalda, second-brain, spec, build-from-scratch]
 ---
 
-# OpenContext
+# Baalda
 
 **Context** is the product an owner buys — the shared, always-current context your team *and* your
-AI both work from. **OpenContext** is the brand. This folder is the build spec: what we are building,
+AI both work from. **Baalda** is the brand. This folder is the build spec: what we are building,
 why, the chosen stack, and the live status.
 
 > [!success] The one-line pitch
@@ -22,7 +22,7 @@ why, the chosen stack, and the live status.
 
 ## The goal
 
-Build **OpenContext** from scratch, smallest-useful-thing first, nothing fancy. We reuse *patterns and
+Build **Baalda** from scratch, smallest-useful-thing first, nothing fancy. We reuse *patterns and
 architecture* from open-source projects (Noteriv, OpenKnowledge, Relay, Hocuspocus, Better Auth)
 but write our own code — we do not ship other people's code.
 

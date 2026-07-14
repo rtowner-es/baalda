@@ -17,6 +17,30 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* Deep-space backdrop. The graph is an immersive dark void in EVERY theme so
+     glowing nodes and edges read with maximum contrast (the canvas clears to
+     transparent, so this shows through). Light/dark app theme does not lighten
+     it — space is dark. */
+  background: radial-gradient(
+    ellipse 130% 130% at 50% 44%,
+    #0f111b 0%,
+    #080910 52%,
+    #030409 100%
+  );
+}
+
+/* Vignette: sink the rim to near-black so the eye falls to the luminous core. */
+.graph-canvas-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    ellipse 100% 100% at 50% 46%,
+    transparent 45%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
 }
 
 .graph-canvas {
@@ -25,6 +49,7 @@
   width: 100%;
   height: 100%;
   display: block;
+  z-index: 0;
   cursor: grab;
 }
 
@@ -97,6 +122,11 @@
   background: var(--bg-active);
 }
 
+.graph-icon-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .graph-icon-btn.is-spinning {
   animation: graph-spin 0.7s linear;
 }
@@ -114,10 +144,12 @@
 .graph-state {
   position: absolute;
   inset: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--sp-8);
+  pointer-events: none;
 }
 
 .graph-state-card {
@@ -144,4 +176,195 @@
   background: var(--accent-soft);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   Settings panel — floating card, bottom-left, dismissible
+   ============================================================ */
+.graph-controls {
+  position: absolute;
+  left: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: 2;
+  width: 250px;
+  max-height: calc(100% - var(--sp-4) * 2 - 64px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: fade-in var(--t-fast) var(--ease) both;
+}
+
+.graph-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.graph-control-group-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.graph-control-row {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.graph-control-row label {
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-control-val {
+  min-width: 32px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Native range input, restyled minimal. */
+.graph-control-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  cursor: pointer;
+}
+.graph-control-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+  transition: transform var(--t-fast) var(--ease);
+}
+.graph-control-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.graph-control-row input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-surface);
+}
+
+.graph-control-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.graph-control-search {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.graph-control-search::placeholder {
+  color: var(--text-tertiary);
+}
+.graph-control-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Segmented control (color mode). */
+.graph-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.graph-seg-btn {
+  flex: 1;
+  padding: 3px 6px;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 1px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.graph-seg-btn:hover {
+  color: var(--text-primary);
+}
+.graph-seg-btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Legend. */
+.graph-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.graph-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+.graph-legend-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.graph-legend-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Footer / reset. */
+.graph-control-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.graph-control-reset {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.graph-control-reset:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }

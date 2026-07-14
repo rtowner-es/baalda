@@ -1,11 +1,11 @@
-# Contributing to OpenContext
+# Contributing to Baalda
 
-Thanks for your interest in improving OpenContext! Contributions of all
+Thanks for your interest in improving Baalda! Contributions of all
 kinds are welcome — bug reports, docs, tests, and code.
 
 ## License of contributions (no CLA)
 
-OpenContext is licensed under the **Apache License 2.0**. We do **not**
+Baalda is licensed under the **Apache License 2.0**. We do **not**
 require a Contributor License Agreement. By submitting a contribution
 (a pull request, patch, or otherwise), you agree that your contribution
 is provided under the same Apache-2.0 license as the project — this is
@@ -20,7 +20,7 @@ not required — you can add one with `git commit -s`.
 ## Before you start a large change
 
 For anything beyond a small fix, **open an issue first** so we can align on
-approach. OpenContext has a deliberate architecture (see below) and some
+approach. Baalda has a deliberate architecture (see below) and some
 invariants are load-bearing — a quick discussion saves rework.
 
 ## Understanding the codebase
@@ -28,7 +28,7 @@ invariants are load-bearing — a quick discussion saves rework.
 Read these before diving in:
 
 - `CLAUDE.md` — the architectural overview and the invariants that matter.
-- `docs/OpenContext.md` — the docs index.
+- `docs/Baalda.md` — the docs index.
 - `docs/specs/` — the design specs (source of truth).
 - `docs/STATUS.md` — current build state.
 
@@ -36,7 +36,7 @@ Key invariants you must not break (details in `CLAUDE.md`):
 
 - **Identity is `doc_id`, never a path.** Never resolve/store a note by path across layers.
 - **The server stores binary Y.Doc only.** Markdown never travels the wire.
-- **`.opencontext/` is hidden and sacred** — never walk, sync, or index it.
+- **`.context/` is hidden and sacred** — never walk, sync, or index it.
 - **Debounce timings are load-bearing** (watcher/ingest ~150ms, egest ~300ms).
 
 ## Development setup

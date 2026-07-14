@@ -1,6 +1,6 @@
 # Security Policy
 
-OpenContext handles authentication, per-file access control, and real-time
+Baalda handles authentication, per-file access control, and real-time
 sync, so we take security reports seriously. Thank you for helping keep
 users safe.
 
@@ -14,7 +14,7 @@ Instead, use one of these private channels:
 1. **GitHub Private Vulnerability Reporting** (preferred) — go to the
    repository's **Security** tab → **Report a vulnerability**.
 2. **Email** — `naveedharri@gmail.com` with the subject line
-   `SECURITY: OpenContext`.
+   `SECURITY: Baalda`.
 
 Please include, as far as you can:
 
@@ -44,5 +44,5 @@ Areas of particular interest:
 
 ## Supported versions
 
-OpenContext is pre-1.0. Security fixes target the latest `main`. Pin to a
+Baalda is pre-1.0. Security fixes target the latest `main`. Pin to a
 released tag for production and update promptly when fixes are published.

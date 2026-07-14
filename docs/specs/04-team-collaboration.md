@@ -1,10 +1,10 @@
 ---
 type: spec
 spec: 04-team-collaboration
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, auth, teams, permissions, presence]
+tags: [baalda, spec, auth, teams, permissions, presence]
 ---
 
 # 04 · Team Collaboration
@@ -12,7 +12,7 @@ tags: [opencontext, spec, auth, teams, permissions, presence]
 Accounts, teams, folder sharing, permissions, and presence — the layer that turns a single-user vault
 into a shared team brain. The through-line: **auth owns identity + membership; a small ACL owns
 content access; both resolve into short-lived per-doc tokens that gate the sync engine.** Overview:
-[[00-architecture-overview]]. Sync: [[03-sync-engine]]. Index: [[OpenContext]].
+[[00-architecture-overview]]. Sync: [[03-sync-engine]]. Index: [[Baalda]].
 
 ---
 

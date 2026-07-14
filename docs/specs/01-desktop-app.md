@@ -1,16 +1,16 @@
 ---
 type: spec
 spec: 01-desktop-app
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, desktop, tauri, codemirror]
+tags: [baalda, spec, desktop, tauri, codemirror]
 ---
 
 # 01 · Desktop App
 
 The client shell: what the user runs. Cross-platform desktop (macOS/Windows/Linux) today, iOS from
-the same core later. Overview: [[00-architecture-overview]]. Index: [[OpenContext]].
+the same core later. Overview: [[00-architecture-overview]]. Index: [[Baalda]].
 
 ---
 
@@ -67,7 +67,7 @@ Five commands + one event channel. This is the entire MVP backend.
 | Command | Signature | Does |
 |---|---|---|
 | `pick_vault()` | → `VaultPath` | Native folder dialog; **extend the fs scope to that path at runtime** so the app may read/write it. |
-| `list_tree(vault)` | → `TreeNode` (nested JSON) | Recursive `std::fs` walk; skips dotfolders and the `.opencontext/` app dir; returns the folder/file tree. |
+| `list_tree(vault)` | → `TreeNode` (nested JSON) | Recursive `std::fs` walk; skips dotfolders and the `.context/` app dir; returns the folder/file tree. |
 | `read_note(path)` | → `String` | Read a `.md` file to a string. |
 | `write_note(path, content)` | → `()` | Atomic write (temp file + rename). This is "save." |
 | `start_watcher(vault)` | → stream | Debounced `notify` watcher; emits `file-changed { path, kind }` events to the UI. |
@@ -97,7 +97,7 @@ originate in Rust; the UI reacts.
 - Render with **react-arborist**: virtualize from day one (a real vault has thousands of notes —
   flatten to a visible-node list and virtualize that).
 - Drag-and-drop move, inline rename, right-click new/delete → map to the Rust mutation commands.
-- Respect an ignore list (`.git`, dotfolders, `.opencontext/`).
+- Respect an ignore list (`.git`, dotfolders, `.context/`).
 
 ## 6. Collaboration & AI hooks (where later phases attach)
 

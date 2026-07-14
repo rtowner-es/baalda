@@ -1,17 +1,17 @@
 ---
 type: spec
 spec: 03-sync-engine
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, sync, yjs, crdt, hocuspocus, bridge]
+tags: [baalda, spec, sync, yjs, crdt, hocuspocus, bridge]
 ---
 
 # 03 · Sync Engine
 
 The heart of the product. Real-time collaboration + local-first offline + the file↔CRDT bridge that
 reconciles plain markdown with the CRDT. This is where all the hard problems live — build it early,
-test it hard. Overview: [[00-architecture-overview]]. Storage: [[02-database-architecture]]. Index: [[OpenContext]].
+test it hard. Overview: [[00-architecture-overview]]. Storage: [[02-database-architecture]]. Index: [[Baalda]].
 
 ---
 

@@ -77,7 +77,7 @@ fn walk(vault: &Path, dir: &Path, out: &mut Vec<AttachmentMeta>) -> AppResult<()
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if is_ignored_name(&name) {
-            continue; // skip dotfiles / .opencontext / .git and our .*.tmp writes
+            continue; // skip dotfiles / .context / .git and our .*.tmp writes
         }
         let path = entry.path();
         let file_type = entry.file_type()?;

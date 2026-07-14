@@ -1,5 +1,5 @@
 <!--
-Thanks for contributing to OpenContext! By submitting this PR you agree your
+Thanks for contributing to Baalda! By submitting this PR you agree your
 contribution is licensed under the project's Apache-2.0 license (no CLA required).
 -->
 
@@ -19,4 +19,4 @@ contribution is licensed under the project's Apache-2.0 license (no CLA required
 - [ ] New source files include `SPDX-License-Identifier: Apache-2.0`.
 - [ ] No secrets, credentials, or `.env` files are committed.
 - [ ] I did not break the core invariants (doc_id identity, binary-only
-      wire, `.opencontext/` untouched, load-bearing debounce timings).
+      wire, `.context/` untouched, load-bearing debounce timings).

@@ -1,6 +1,6 @@
 <div align="center">
 
-# OpenContext
+# Baalda
 
 **A local-first "second brain" where your notes are plain Markdown files — that an AI can edit directly _and_ your team edits together in real time.**
 
@@ -14,15 +14,15 @@
 </div>
 
 <!-- Add a screenshot or short demo GIF here for the best first impression:
-     ![OpenContext](docs/screenshot.png) -->
+     ![Baalda](docs/screenshot.png) -->
 
 > _Add a screenshot or short demo GIF here — it's the single biggest upgrade a README can get._
 
 ---
 
-## What is OpenContext?
+## What is Baalda?
 
-OpenContext is an Obsidian-like desktop app for notes and knowledge — your **second brain**. Every note is a plain `.md` file on your own disk, so your data is always yours. What makes it different is that those same files are:
+Baalda is an Obsidian-like desktop app for notes and knowledge — your **second brain**. Every note is a plain `.md` file on your own disk, so your data is always yours. What makes it different is that those same files are:
 
 - **Editable by AI** — connect Claude or any AI assistant and it reads and writes your notes directly, like a teammate would.
 - **Shared in real time** — invite people, share a folder, and edit the same note together with live cursors.
@@ -42,7 +42,7 @@ Every open-source "second brain" app forces a choice:
 
 Why? The two are built on **incompatible foundations**. AI-editable notes need loose Markdown on disk as the source of truth. Real-time collaboration is built on CRDTs, whose state is an opaque binary blob. No tool combined them.
 
-We scanned **41** open-source Obsidian-like apps against **12 core requirements**. **None satisfied all 12.** OpenContext is the missing bridge between the two worlds — and that bridge is the whole product.
+We scanned **41** open-source Obsidian-like apps against **12 core requirements**. **None satisfied all 12.** Baalda is the missing bridge between the two worlds — and that bridge is the whole product.
 
 ---
 
@@ -140,13 +140,13 @@ Open a folder of Markdown files (or create a new one) and start writing.
 
 ## 🤖 Connect an AI (MCP)
 
-OpenContext exposes a **Model Context Protocol** endpoint, so any MCP-speaking AI client can work with your vault exactly like a person — limited by the same per-folder permissions.
+Baalda exposes a **Model Context Protocol** endpoint, so any MCP-speaking AI client can work with your vault exactly like a person — limited by the same per-folder permissions.
 
 1. In the app, go to **Workspace settings → MCP** and create a token.
 2. Register the endpoint with your AI client, e.g. Claude Code:
 
 ```bash
-claude mcp add --transport http opencontext http://localhost:3010/api/mcp \
+claude mcp add --transport http context http://localhost:3010/api/mcp \
   --header "Authorization: Bearer mcp_…"
 ```
 
@@ -179,7 +179,7 @@ app/
 docs/               Product overview, build status, specs, and reference research
 ```
 
-Deep dives live in [`docs/`](docs/): the [product overview](docs/OpenContext.md), the design [specs](docs/specs/), and the [build status](docs/STATUS.md).
+Deep dives live in [`docs/`](docs/): the [product overview](docs/Baalda.md), the design [specs](docs/specs/), and the [build status](docs/STATUS.md).
 
 ---
 
@@ -191,10 +191,10 @@ Issues and pull requests are welcome. If you're planning a larger change, please
 
 ## License
 
-OpenContext is open source under the **[Apache License 2.0](LICENSE)** — use it,
+Baalda is open source under the **[Apache License 2.0](LICENSE)** — use it,
 self-host it, modify it, and build commercial products on it, freely.
 
-The **OpenContext** name and brand are trademarks and are **not** covered by the
+The **Baalda** name and brand are trademarks and are **not** covered by the
 code license — see the [Trademark Policy](TRADEMARK.md). You're welcome to fork
 and run the code; please give your version its own name.
 

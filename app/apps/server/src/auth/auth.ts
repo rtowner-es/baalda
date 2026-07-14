@@ -3,6 +3,7 @@ import { bearer, organization } from "better-auth/plugins";
 import { Algorithm, hash as argonHash, verify as argonVerify } from "@node-rs/argon2";
 import pg from "pg";
 import { config } from "../config.js";
+import { BRAND_NAME } from "../brand.js";
 
 /**
  * Better Auth (spec 04 §1/§2).
@@ -26,7 +27,7 @@ const argonOpts = { algorithm: Algorithm.Argon2id } as const;
 export const authPool = new pg.Pool({ connectionString: config.databaseUrl });
 
 export const auth = betterAuth({
-  appName: "OpenContext",
+  appName: BRAND_NAME,
   database: authPool,
   secret: config.jwtSecret,
   baseURL: config.betterAuthUrl,

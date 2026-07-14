@@ -81,7 +81,7 @@ describe("MCP server", () => {
     const token = await tokenFor(owner, org);
 
     const init = await (await rpc(token, "initialize", {})).json();
-    expect((init as any).result.serverInfo.name).toBe("opencontext");
+    expect((init as any).result.serverInfo.name).toBe("context");
 
     const list = await (await rpc(token, "tools/list")).json();
     const names = (list as any).result.tools.map((t: any) => t.name);

@@ -19,7 +19,7 @@ function int(name: string, fallback: number): number {
 export const config = {
   databaseUrl: required(
     "DATABASE_URL",
-    "postgres://opencontext:opencontext@localhost:5439/opencontext",
+    "postgres://context:context@localhost:5439/context",
   ),
   /** Shared secret: Better Auth crypto + HS256 per-doc sync JWTs. */
   jwtSecret: required("JWT_SECRET", "dev-only-insecure-change-me-please-32bytes"),

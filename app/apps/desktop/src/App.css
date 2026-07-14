@@ -1,5 +1,5 @@
 /* ============================================================
-   OpenContext — App shell styles
+   Baalda — App shell styles
    Atomize PLUS: light-first layered surfaces, pill actions,
    violet accent, soft diffuse shadows, 4pt grid.
    Every value consumes a token from styles/tokens.css.
@@ -305,11 +305,12 @@ button.primary.hero:hover:not(:disabled) {
   line-height: var(--lh-tight);
   color: var(--text-primary);
 }
-/* "[open]context" wordmark — brackets carry the brand green. */
-.vault-picker-card .product-name .wm-bracket {
-  color: var(--brand-green);
-  font-weight: 700;
-}
+/* Baalda wordmark image — ink on light theme, silver on dark. */
+.wordmark { display: inline-flex; justify-content: center; }
+.wordmark-img { height: 28px; width: auto; display: block; }
+.wordmark-silver { display: none; }
+[data-theme="dark"] .wordmark-ink { display: none; }
+[data-theme="dark"] .wordmark-silver { display: block; }
 .vault-picker-card .tagline {
   color: var(--text-secondary);
   font-size: var(--fs-md);
@@ -626,6 +627,134 @@ button.primary.hero:hover:not(:disabled) {
   margin: 0 var(--sp-1);
   background: var(--border);
   flex: 0 0 auto;
+}
+/* The active Select toggle reads as "on" (accent-tinted) while selecting. */
+.filetree-actions .tree-tool.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.filetree-actions .tree-tool.on:hover {
+  background: var(--accent-soft-hover);
+}
+
+/* Bulk-action bar — only mounted while selecting, so it never crowds browsing. */
+.filetree-selectbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2) var(--sp-1) calc(var(--sp-3) + var(--sp-2));
+  min-height: 30px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--sp-1);
+}
+.selbar-check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1.5px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.selbar-check:hover {
+  border-color: var(--accent);
+}
+.selbar-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.selbar-check svg {
+  width: 12px;
+  height: 12px;
+}
+.selbar-count {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.selbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.selbar-btn {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.selbar-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.selbar-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.selbar-btn.danger {
+  color: var(--danger, #e5484d);
+  border-color: color-mix(in srgb, var(--danger, #e5484d) 40%, var(--border));
+}
+.selbar-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent);
+  color: var(--danger, #e5484d);
+}
+
+/* Per-row checkbox shown only in select mode (leads the row, before the glyph). */
+.tree-check {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border-strong, var(--border));
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.tree-check:hover {
+  border-color: var(--accent);
+}
+.tree-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tree-check svg {
+  width: 11px;
+  height: 11px;
+}
+.tree-row.checked {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+.tree-row.checked:hover {
+  background: var(--accent-soft-hover);
 }
 .tree-row {
   display: flex;
@@ -1053,11 +1182,38 @@ button.primary.hero:hover:not(:disabled) {
   overflow: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-5);
 }
+.backlinks-panel.collapsed {
+  max-height: none;
+  overflow: visible;
+  padding-top: var(--sp-3);
+  padding-bottom: var(--sp-3);
+}
 .panel-header {
   margin-bottom: var(--sp-3);
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.backlinks-panel.collapsed .panel-header {
+  margin-bottom: 0;
+}
+.panel-chevron {
+  display: inline-block;
+  transition: transform var(--t-fast) var(--ease);
+  color: var(--text-tertiary);
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+.panel-chevron.open {
+  transform: rotate(90deg);
 }
 .panel-header .count {
   color: var(--accent);
@@ -1902,202 +2058,6 @@ button.primary.hero:hover:not(:disabled) {
   }
 }
 
-/* ============================================================
-   Presence — "who's here" avatars + read-only badge
-   (rendered inside the editor toolbar)
-   ============================================================ */
-.editor-column {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 24px;
-  padding: 0 var(--sp-1) var(--sp-1);
-}
-.editor-column .editor-host {
-  flex: 1;
-  min-height: 0;
-}
-.presence-bar {
-  display: flex;
-  align-items: center;
-}
-.presence-avatar {
-  position: relative;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  color: #fff;
-  font-size: var(--fs-md);
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* White gap separates the fill from the coloured status ring; the ring
-     (--status-color) signals whether the peer is editing or just viewing. */
-  border: 2px solid var(--bg-surface);
-  box-shadow: 0 0 0 2px var(--status-color, transparent);
-  margin-left: -8px;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
-  cursor: default;
-  transition:
-    transform var(--t-med) var(--ease-spring),
-    box-shadow var(--t-fast) var(--ease);
-}
-.presence-avatar:first-child {
-  margin-left: 0;
-}
-.presence-avatar:hover {
-  transform: scale(1.18);
-  z-index: 2;
-}
-/* Name bubble on hover — anchored below-left so it stays inside the window
-   (the presence bar sits at the editor's top-right edge). */
-.presence-avatar::after {
-  content: attr(data-name);
-  position: absolute;
-  top: calc(100% + var(--sp-2));
-  right: 0;
-  background: var(--text-primary);
-  color: var(--bg-surface);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  text-shadow: none;
-  padding: 3px var(--sp-2);
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  box-shadow: var(--shadow-md);
-  opacity: 0;
-  transform: translateY(-2px);
-  pointer-events: none;
-  transition:
-    opacity var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease);
-  z-index: 10;
-}
-.presence-avatar:hover::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-/* When the peer card is open, its name is already shown in the card — suppress
-   the black hover-name bubble so the two don't overlap. */
-.presence-avatar.card-open::after {
-  display: none;
-}
-.readonly-badge {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--warning);
-  background: var(--warning-soft);
-  border-radius: var(--radius-pill);
-  padding: 2px var(--sp-3);
-}
-
-/* Presence avatars are buttons now (click → peer card) */
-.presence-avatar {
-  padding: 0;
-}
-button.presence-avatar {
-  cursor: pointer;
-}
-.presence-avatar.card-open {
-  transform: scale(1.12);
-  z-index: 2;
-}
-.presence-avatar.static {
-  margin-left: 0;
-  cursor: default;
-}
-.presence-avatar.static::after {
-  display: none;
-}
-
-/* Peer detail card — anchored under the presence bar */
-.editor-toolbar {
-  position: relative;
-}
-.peer-card {
-  position: absolute;
-  top: calc(100% + var(--sp-1));
-  /* Anchored to the right, under the presence avatars it belongs to. */
-  right: var(--sp-1);
-  z-index: 150;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
-  min-width: 200px;
-  padding: var(--sp-3);
-  /* Light, translucent "glass" panel — see-through over the note behind it. */
-  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  animation: rise-in var(--t-fast) var(--ease) both;
-}
-.peer-card-head {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-.peer-card-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.peer-card-name {
-  font-weight: 600;
-  font-size: var(--fs-md);
-  color: var(--text-primary);
-}
-.peer-card-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-.peer-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.peer-ping {
-  align-self: stretch;
-}
-
-/* "X pinged you" — appears in the toolbar, rings once, fades out */
-.ping-toast {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: var(--radius-pill);
-  padding: 3px var(--sp-3);
-  animation:
-    rise-in var(--t-fast) var(--ease) both,
-    ping-wiggle 0.5s var(--ease-spring) 1;
-}
-@keyframes ping-wiggle {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  25% {
-    transform: rotate(-3deg) scale(1.05);
-  }
-  60% {
-    transform: rotate(2deg);
-  }
-}
 
 /* Remote cursors + selections rendered by y-codemirror.next */
 .cm-ySelection {

@@ -1,5 +1,5 @@
-The OpenContext Enterprise License (the "Enterprise License")
-Copyright 2026 OpenContext
+The Baalda Enterprise License (the "Enterprise License")
+Copyright 2026 Baalda
 
 -------------------------------------------------------------------------------
 IMPORTANT: This is a commercial license TEMPLATE. It is NOT an open-source
@@ -13,15 +13,15 @@ this repository OUTSIDE of the "ee" directory is licensed separately under the
 Apache License 2.0 (see the LICENSE file at the repository root) and is NOT
 subject to this Enterprise License.
 
-1. Grant. Subject to your compliance with this license, OpenContext grants you
+1. Grant. Subject to your compliance with this license, Baalda grants you
    a non-exclusive, non-transferable, non-sublicensable license to use, copy,
    and modify the Enterprise Software solely for:
      (a) internal development, testing, and evaluation; and
      (b) production use, ONLY if you have a valid, current paid subscription
-         or commercial agreement with OpenContext that covers such use.
+         or commercial agreement with Baalda that covers such use.
 
 2. Restrictions. You may not, without a separate written agreement with
-   OpenContext:
+   Baalda:
      (a) use the Enterprise Software in production without a valid paid
          subscription;
      (b) provide the Enterprise Software to third parties as a hosted or
@@ -39,7 +39,7 @@ subject to this Enterprise License.
 
 5. No warranty; limitation of liability. THE ENTERPRISE SOFTWARE IS PROVIDED
    "AS IS", WITHOUT WARRANTY OF ANY KIND. TO THE MAXIMUM EXTENT PERMITTED BY
-   LAW, OPENCONTEXT SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF
+   LAW, BAALDA SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM THE USE OF
    THE ENTERPRISE SOFTWARE.
 
 For commercial licensing, contact: naveedharri@gmail.com

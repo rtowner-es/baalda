@@ -18,7 +18,7 @@ pub struct TreeNode {
     pub children: Option<Vec<TreeNode>>,
 }
 
-/// Walk the vault into a nested tree. Skips dotfolders, `.git`, `.opencontext/`,
+/// Walk the vault into a nested tree. Skips dotfolders, `.git`, `.context/`,
 /// and non-markdown files (folders are always kept so the user can organize).
 pub fn list_tree(vault: &Path) -> AppResult<TreeNode> {
     let name = vault
@@ -98,9 +98,11 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn walk_skips_opencontext_and_dotfolders() {
+    fn walk_skips_context_dirs_and_dotfolders() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
+        fs::create_dir_all(root.join(".context")).unwrap();
+        fs::write(root.join(".context/index.sqlite"), b"x").unwrap();
         fs::create_dir_all(root.join(".opencontext")).unwrap();
         fs::write(root.join(".opencontext/index.sqlite"), b"x").unwrap();
         fs::create_dir_all(root.join(".git")).unwrap();
@@ -112,7 +114,7 @@ mod tests {
 
         let tree = list_tree(root).unwrap();
         let children = tree.children.unwrap();
-        // Only "Notes" dir should appear (not .opencontext, .git, or ignored.txt).
+        // Only "Notes" dir should appear (not .context, .opencontext, .git, or ignored.txt).
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].name, "Notes");
 

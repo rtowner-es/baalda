@@ -1,4 +1,4 @@
-// The ONE typed HTTP boundary to the OpenContext server. Every `fetch`
+// The ONE typed HTTP boundary to the Baalda server. Every `fetch`
 // to the server lives here — auth, organizations, registry, shares, sync-token.
 // Components and managers call these methods; they never call `fetch` directly.
 // (Tauri `invoke` lives in `ipc.ts`; these two are the only I/O boundaries.)

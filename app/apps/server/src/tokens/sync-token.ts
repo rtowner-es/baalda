@@ -13,7 +13,7 @@ export interface SyncTokenClaims {
 }
 
 const secret = new TextEncoder().encode(config.jwtSecret);
-const ISSUER = "opencontext";
+const ISSUER = "context";
 const AUDIENCE = "hocuspocus";
 
 export async function mintSyncToken(

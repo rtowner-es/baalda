@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import "./editor.css";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { keymap, EditorView } from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
 import type { Awareness } from "y-protocols/awareness";
 import { createEditorState } from "../lib/editor";
@@ -14,6 +14,7 @@ import { colorForUser } from "../lib/presence/color";
 import { useStore } from "../store";
 import * as ipc from "../lib/ipc";
 import { HtmlView } from "./HtmlView";
+import { relativeAgo } from "./Identity";
 
 interface Peer {
   id: string;
@@ -21,11 +22,13 @@ interface Peer {
   color: string;
   /** Line their cursor is on (from the `activity` awareness field), if known. */
   line: number | null;
+  /** Timestamp (ms) of their last activity update — powers "last active". */
+  lastActive: number | null;
 }
 
 interface AwarenessPeerState {
   user?: { id?: string; name?: string; color?: string };
-  activity?: { line?: number };
+  activity?: { line?: number; at?: number };
   ping?: { to?: string; name?: string; at?: number };
 }
 
@@ -38,15 +41,20 @@ function readPeers(awareness: Awareness): Peer[] {
     if (!u?.id) return;
     const prev = seen.get(u.id);
     const line = typeof s.activity?.line === "number" ? s.activity.line : null;
+    const at = typeof s.activity?.at === "number" ? s.activity.at : null;
     if (!prev) {
       seen.set(u.id, {
         id: u.id,
         name: u.name ?? "Someone",
         color: u.color ?? colorForUser(u.id),
         line,
+        lastActive: at,
       });
-    } else if (prev.line == null && line != null) {
-      prev.line = line;
+    } else {
+      if (prev.line == null && line != null) prev.line = line;
+      if (at != null && (prev.lastActive == null || at > prev.lastActive)) {
+        prev.lastActive = at;
+      }
     }
   });
   return [...seen.values()];
@@ -94,125 +102,166 @@ async function saveAttachment(bytes: Uint8Array, ext: string): Promise<string> {
   return `/${rel}`;
 }
 
-/** Max avatars rendered before collapsing the rest into a "+N" chip. */
-const MAX_AVATARS = 4;
-
-/**
- * A peer's status ring colour: green while they're actively editing (cursor on a
- * line), amber when they're just viewing the note. Rendered as a coloured border
- * around their avatar via the `--status-color` custom property.
- */
-function statusColor(peer: Peer): string {
-  return peer.line != null ? "var(--success)" : "var(--warning)";
+/** CodeMirror extensions that make the view non-editable (view-only / locked). */
+function editableExtensions(readOnly: boolean) {
+  return readOnly
+    ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
+    : [];
 }
 
-/** "Who's in this note" avatar row (spec 04 §5). Click an avatar for details. */
+/** Max slots in the stacked avatar row before the rest collapse into "+N". */
+const MAX_AVATARS = 4;
+
+/** Initials shown inside an avatar (first letter of the display name). */
+function initial(name: string): string {
+  return name.trim().slice(0, 1).toUpperCase() || "?";
+}
+
+/**
+ * A single presence avatar: a glowing ring in the peer's unique colour with a
+ * contrasting (surface) centre. The colour is passed as `--user-color` so the
+ * CSS owns the ring/glow/initial treatment.
+ */
+function PresenceAvatar({ peer, className }: { peer: Peer; className?: string }) {
+  return (
+    <span
+      className={`presence-avatar${className ? ` ${className}` : ""}`}
+      style={{ "--user-color": peer.color } as CSSProperties}
+      aria-hidden="true"
+    >
+      {initial(peer.name)}
+    </span>
+  );
+}
+
+/**
+ * "Who's in this note" avatar stack (spec 04 §5). Avatars overlap; anything past
+ * MAX_AVATARS collapses into a "+N" chip. Clicking anywhere on the stack toggles
+ * the roster popover.
+ */
 function PresenceBar({
   peers,
-  activeId,
-  onPeerClick,
+  open,
+  onToggle,
 }: {
   peers: Peer[];
-  activeId: string | null;
-  onPeerClick: (peer: Peer) => void;
+  open: boolean;
+  onToggle: () => void;
 }) {
   if (peers.length === 0) return null;
-  const shown = peers.slice(0, MAX_AVATARS);
+  // Keep the row to at most MAX_AVATARS slots: when there are more, show a few
+  // faces and roll the remainder into the "+N" chip (which fills the last slot).
+  const shown = peers.length > MAX_AVATARS ? peers.slice(0, MAX_AVATARS - 1) : peers;
   const overflow = peers.length - shown.length;
+  const names = peers.map((p) => p.name).join(", ");
   return (
-    <div className="presence-bar">
+    <button
+      type="button"
+      className={`presence-bar${open ? " open" : ""}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      aria-label={`${peers.length} here: ${names}`}
+      aria-expanded={open}
+    >
       {shown.map((p) => (
+        <PresenceAvatar key={p.id} peer={p} />
+      ))}
+      {overflow > 0 && <span className="presence-avatar presence-overflow">+{overflow}</span>}
+    </button>
+  );
+}
+
+/** One row in the roster: avatar + name + status/last-active + optional Ping. */
+function PeerRow({
+  peer,
+  isSelf,
+  now,
+  onPing,
+}: {
+  peer: Peer;
+  isSelf: boolean;
+  now: number;
+  onPing: (peer: Peer) => void;
+}) {
+  const [pinged, setPinged] = useState(false);
+  const editing = peer.line != null;
+  return (
+    <div className="peer-row">
+      <PresenceAvatar peer={peer} className="sm" />
+      <div className="peer-row-meta">
+        <span className="peer-row-name">
+          {peer.name}
+          {isSelf && <span className="muted"> (you)</span>}
+        </span>
+        <span className="peer-row-status">
+          <span className={`peer-dot${editing ? " active" : ""}`} />
+          {editing ? `Editing line ${peer.line}` : "Viewing"}
+          {peer.lastActive != null && (
+            <span className="peer-row-ago"> · {relativeAgo(peer.lastActive, now)}</span>
+          )}
+        </span>
+      </div>
+      {!isSelf && (
         <button
-          key={p.id}
           type="button"
-          className={`presence-avatar${activeId === p.id ? " card-open" : ""}`}
-          style={
-            {
-              backgroundColor: p.color,
-              "--status-color": statusColor(p),
-            } as CSSProperties
-          }
-          data-name={p.name}
-          aria-label={p.name}
+          className="peer-ping"
+          disabled={pinged}
+          title="Send a ping"
           onClick={(e) => {
             e.stopPropagation();
-            onPeerClick(p);
+            onPing(peer);
+            setPinged(true);
           }}
         >
-          {p.name.slice(0, 1).toUpperCase()}
+          {pinged ? "✓" : "Ping"}
         </button>
-      ))}
-      {overflow > 0 && (
-        <span
-          className="presence-avatar presence-overflow"
-          data-name={peers.slice(MAX_AVATARS).map((p) => p.name).join(", ")}
-          aria-label={peers.slice(MAX_AVATARS).map((p) => p.name).join(", ")}
-        >
-          +{overflow}
-        </span>
       )}
     </div>
   );
 }
 
 /**
- * Peer detail card: who they are, where they are in the note, and a Ping
- * button — the ping plays a mention chime on their machine via awareness.
+ * Roster popover: the quick list of everyone in the note, each with their live
+ * status ring, where they are, and how long since they were last active. Opens
+ * on a click of the presence stack; closes on any outside click.
  */
-function PeerCard({
-  peer,
-  isSelf,
+function PeerRoster({
+  peers,
+  selfId,
   onPing,
   onClose,
 }: {
-  peer: Peer;
-  isSelf: boolean;
+  peers: Peer[];
+  selfId: string | null;
   onPing: (peer: Peer) => void;
   onClose: () => void;
 }) {
-  const [pinged, setPinged] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => {
     const close = () => onClose();
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [onClose]);
   return (
-    <div className="peer-card" onClick={(e) => e.stopPropagation()}>
-      <div className="peer-card-head">
-        <span
-          className="presence-avatar static"
-          style={
-            {
-              backgroundColor: peer.color,
-              "--status-color": statusColor(peer),
-            } as CSSProperties
-          }
-        >
-          {peer.name.slice(0, 1).toUpperCase()}
-        </span>
-        <div className="peer-card-meta">
-          <span className="peer-card-name">
-            {peer.name}
-            {isSelf && <span className="muted"> (you)</span>}
-          </span>
-          <span className="peer-card-status">
-            <span className="peer-dot" style={{ backgroundColor: peer.color }} />
-            {peer.line != null ? `Editing line ${peer.line}` : "Viewing this note"}
-          </span>
-        </div>
+    <div className="peer-roster" onClick={(e) => e.stopPropagation()}>
+      <div className="peer-roster-title">
+        {peers.length} {peers.length === 1 ? "person" : "people"} here
       </div>
-      {!isSelf && (
-        <button
-          className="primary sm peer-ping"
-          disabled={pinged}
-          onClick={() => {
-            onPing(peer);
-            setPinged(true);
-          }}
-        >
-          {pinged ? "Pinged ✓" : "Ping"}
-        </button>
-      )}
+      {peers.map((p) => (
+        <PeerRow
+          key={p.id}
+          peer={p}
+          isSelf={p.id === selfId}
+          now={now}
+          onPing={onPing}
+        />
+      ))}
     </div>
   );
 }
@@ -234,11 +283,15 @@ export function Editor() {
   const locks = useStore((s) => s.locks);
   const session = useStore((s) => s.session);
   const tree = useStore((s) => s.tree);
+  const syncStatus = useStore((s) => s.syncStatus);
   const notePath = openNote?.path ?? null;
 
   const [peers, setPeers] = useState<Peer[]>([]);
   const [readOnly, setReadOnly] = useState(false);
-  const [cardPeer, setCardPeer] = useState<Peer | null>(null);
+  // Editability is held in a Compartment so a lock applied while the note is
+  // open can flip the live view read-only without rebuilding it.
+  const editableRef = useRef<Compartment | null>(null);
+  const [rosterOpen, setRosterOpen] = useState(false);
   const [pingFrom, setPingFrom] = useState<string | null>(null);
   const awarenessRef = useRef<Awareness | null>(null);
   // Pings already played, keyed by sender clientId + timestamp.
@@ -299,6 +352,8 @@ export function Editor() {
       awarenessRef.current = awareness;
       const ro = opened.readOnly;
       setReadOnly(ro);
+      const editable = new Compartment();
+      editableRef.current = editable;
 
       const state = createEditorState({
         doc: bridge.text.toString(),
@@ -317,12 +372,11 @@ export function Editor() {
           EditorView.updateListener.of((u) => {
             if (!u.selectionSet && !u.docChanged && !u.focusChanged) return;
             const line = u.state.doc.lineAt(u.state.selection.main.head).number;
-            awareness?.setLocalStateField("activity", { line });
+            awareness?.setLocalStateField("activity", { line, at: Date.now() });
           }),
-          // View-only grants: the editor cannot be typed into (spec 04 §4).
-          ...(ro
-            ? [EditorState.readOnly.of(true), EditorView.editable.of(false)]
-            : []),
+          // View-only grants / locks: the editor cannot be typed into (spec
+          // 04 §4). Compartmented so a live lock change can reconfigure it.
+          editable.of(editableExtensions(ro)),
         ],
       });
 
@@ -357,11 +411,12 @@ export function Editor() {
       if (onAwarenessChange && awareness) awareness.off("change", onAwarenessChange);
       if (view) view.destroy();
       viewRef.current = null;
+      editableRef.current = null;
       awarenessRef.current = null;
       seenPingsRef.current.clear();
       setPeers([]);
       setReadOnly(false);
-      setCardPeer(null);
+      setRosterOpen(false);
       setPingFrom(null);
       // Tear down the network session, then flush + close the bridge.
       syncManager.closeCurrent();
@@ -369,6 +424,29 @@ export function Editor() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notePath, syncEnabled]);
+
+  // Live lock/grant changes on the OPEN note. When someone locks it "for
+  // everyone," the server force-closes our socket; DocSync re-mints a read-only
+  // token on reconnect and the status flips to "read-only" here — no reopen
+  // needed. Also refresh the lock list so the tree badge appears for us too.
+  useEffect(() => {
+    if (syncStatus === "read-only") {
+      setReadOnly(true);
+      void useStore.getState().refreshLocks();
+    } else if (syncStatus === "synced") {
+      // Unlocked / edit grant restored — become editable again.
+      setReadOnly(false);
+    }
+  }, [syncStatus]);
+
+  // Push the current read-only state into the live CodeMirror view.
+  useEffect(() => {
+    const view = viewRef.current;
+    const editable = editableRef.current;
+    if (!view || !editable) return;
+    view.dispatch({ effects: editable.reconfigure(editableExtensions(readOnly)) });
+    if (!readOnly) view.focus();
+  }, [readOnly]);
 
   if (notePath == null) {
     return (
@@ -394,7 +472,7 @@ export function Editor() {
     });
   };
 
-  const showToolbar = peers.length > 0 || readOnly;
+  const showToolbar = peers.length > 0;
 
   return (
     <div className="editor-column">
@@ -402,16 +480,15 @@ export function Editor() {
         <div className="editor-toolbar">
           <PresenceBar
             peers={peers}
-            activeId={cardPeer?.id ?? null}
-            onPeerClick={(p) => setCardPeer((c) => (c?.id === p.id ? null : p))}
+            open={rosterOpen}
+            onToggle={() => setRosterOpen((o) => !o)}
           />
-          {cardPeer && (
-            <PeerCard
-              // Re-read live data so the card tracks the peer's cursor line.
-              peer={peers.find((p) => p.id === cardPeer.id) ?? cardPeer}
-              isSelf={cardPeer.id === myId}
+          {rosterOpen && (
+            <PeerRoster
+              peers={peers}
+              selfId={myId}
               onPing={sendPing}
-              onClose={() => setCardPeer(null)}
+              onClose={() => setRosterOpen(false)}
             />
           )}
           {pingFrom && (
@@ -419,21 +496,18 @@ export function Editor() {
               🔔 {pingFrom} pinged you
             </span>
           )}
-          {readOnly && (
-            <span
-              className="readonly-badge"
-              title={
-                lockScope
-                  ? "This note is locked — changes won't sync"
-                  : "You have view-only access"
-              }
-            >
-              <span className="readonly-lock" aria-hidden="true">
-                🔒
-              </span>
-              {lockScope ? "Locked" : "Read-only"}
-            </span>
-          )}
+        </div>
+      )}
+      {readOnly && (
+        <div className="editor-lockbanner" role="status">
+          <span className="editor-lockbanner-icon" aria-hidden="true">
+            🔒
+          </span>
+          <span className="editor-lockbanner-text">
+            {lockScope
+              ? "This note is locked. You can read it, but your changes won’t be saved or synced."
+              : "You have view-only access. You can read this note, but you can’t edit it."}
+          </span>
         </div>
       )}
       <div className="editor-host" ref={hostRef} />

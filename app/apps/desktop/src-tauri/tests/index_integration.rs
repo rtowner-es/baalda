@@ -1,23 +1,13 @@
 //! Integration test: build a real on-disk test vault (nested folders, tags,
-//! wiki-links) at the scratchpad path from the task brief, then exercise the
-//! public index logic against it end-to-end.
+//! wiki-links) in the OS temp dir, then exercise the public index logic
+//! against it end-to-end.
 
 use desktop_lib::index::Index;
 use desktop_lib::notefile;
 use std::path::PathBuf;
 
 fn scratch_vault() -> PathBuf {
-    // Prefer the path named in the task brief; fall back to the OS temp dir if
-    // its parent isn't present on this machine.
-    let brief = PathBuf::from(
-        "/private/tmp/claude-501/-Users-macbook-Documents-OpenContext/\
-         37c7b913-e5da-4998-8c88-1ba939949db7/scratchpad/test-vault",
-    );
-    if brief.parent().map(|p| p.exists()).unwrap_or(false) {
-        brief
-    } else {
-        std::env::temp_dir().join("opencontext-test-vault")
-    }
+    std::env::temp_dir().join("context-test-vault")
 }
 
 fn seed(vault: &PathBuf) {
@@ -28,19 +18,19 @@ fn seed(vault: &PathBuf) {
     notefile::write_note(
         vault,
         "Index.md",
-        "---\ntitle: Home\ntags: [moc]\n---\n# Home\n\nStart at [[Projects/OpenContext]] and [[Daily/2026-07-13]].\n",
+        "---\ntitle: Home\ntags: [moc]\n---\n# Home\n\nStart at [[Projects/Baalda]] and [[Daily/2026-07-13]].\n",
     )
     .unwrap();
     notefile::write_note(
         vault,
-        "Projects/OpenContext.md",
-        "# OpenContext\n\nA local-first #project. Relates to [[Index]].\nSee also [[Daily/2026-07-13]].\n",
+        "Projects/Baalda.md",
+        "# Baalda\n\nA local-first #project. Relates to [[Index]].\nSee also [[Daily/2026-07-13]].\n",
     )
     .unwrap();
     notefile::write_note(
         vault,
         "Daily/2026-07-13.md",
-        "# 2026-07-13\n\nWorked on #project opencontext. Quick brown fox jumps. Link [[Projects/OpenContext]].\n",
+        "# 2026-07-13\n\nWorked on #project baalda. Quick brown fox jumps. Link [[Projects/Baalda]].\n",
     )
     .unwrap();
     notefile::write_note(
@@ -70,13 +60,13 @@ fn full_index_lifecycle_on_disk_vault() {
     assert!(hits[0].snippet.contains("<mark>"));
 
     // Wiki-link resolution (path-style target).
-    let resolved = idx.resolve_wikilink("Projects/OpenContext").unwrap().unwrap();
-    assert_eq!(resolved.path, "Projects/OpenContext.md");
+    let resolved = idx.resolve_wikilink("Projects/Baalda").unwrap().unwrap();
+    assert_eq!(resolved.path, "Projects/Baalda.md");
 
-    // Backlinks: OpenContext is linked from Index + Daily → 2 backlinks.
-    let opencontext = idx.get_note_meta("Projects/OpenContext.md").unwrap().unwrap();
-    let backlinks = idx.get_backlinks(&opencontext.id).unwrap();
-    assert_eq!(backlinks.len(), 2, "opencontext backlinks: {:?}", backlinks);
+    // Backlinks: Baalda is linked from Index + Daily → 2 backlinks.
+    let baalda = idx.get_note_meta("Projects/Baalda.md").unwrap().unwrap();
+    let backlinks = idx.get_backlinks(&baalda.id).unwrap();
+    assert_eq!(backlinks.len(), 2, "baalda backlinks: {:?}", backlinks);
 
     // Tags surfaced on the daily note.
     let daily = idx.get_note_meta("Daily/2026-07-13.md").unwrap().unwrap();
@@ -87,25 +77,25 @@ fn full_index_lifecycle_on_disk_vault() {
     assert!(dangling.is_none());
 
     // Identity is stable across a rebuild.
-    let id_before = opencontext.id.clone();
+    let id_before = baalda.id.clone();
     idx.rebuild(&vault).unwrap();
-    let id_after = idx.get_note_meta("Projects/OpenContext.md").unwrap().unwrap().id;
+    let id_after = idx.get_note_meta("Projects/Baalda.md").unwrap().unwrap().id;
     assert_eq!(id_before, id_after);
 
     // A move keeps inbound links pointing at the same doc_id.
     std::fs::create_dir_all(vault.join("Archive")).unwrap();
     std::fs::rename(
-        vault.join("Projects/OpenContext.md"),
-        vault.join("Archive/OpenContext.md"),
+        vault.join("Projects/Baalda.md"),
+        vault.join("Archive/Baalda.md"),
     )
     .unwrap();
     idx.rename_note(
         &vault,
-        &vault.join("Projects/OpenContext.md"),
-        &vault.join("Archive/OpenContext.md"),
+        &vault.join("Projects/Baalda.md"),
+        &vault.join("Archive/Baalda.md"),
     )
     .unwrap();
-    let moved = idx.get_note_meta("Archive/OpenContext.md").unwrap().unwrap();
+    let moved = idx.get_note_meta("Archive/Baalda.md").unwrap().unwrap();
     assert_eq!(moved.id, id_before);
     assert_eq!(idx.get_backlinks(&moved.id).unwrap().len(), 2);
 }

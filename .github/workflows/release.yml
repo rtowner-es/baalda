@@ -73,7 +73,7 @@ jobs:
         with:
           projectPath: app/apps/desktop
           tagName: v__VERSION__
-          releaseName: 'OpenContext v__VERSION__'
+          releaseName: 'Baalda v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           releaseDraft: true
           prerelease: false

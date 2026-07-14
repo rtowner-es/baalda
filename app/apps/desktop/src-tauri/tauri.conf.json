@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OpenContext",
+  "productName": "Baalda",
   "version": "0.1.2",
-  "identifier": "co.opencontext.context",
+  "identifier": "com.baalda.context",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "OpenContext",
+        "title": "Baalda",
         "width": 1200,
         "height": 800,
         "minWidth": 720,
@@ -44,7 +44,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5M0Y3Mjg4RDcwQTlGMTUKUldRVm53clhpSEkveVZqVG1Ub2RwYzBHR0toeGFRYVIrandud3VLY1BYc0ZIUTRTTGFpdHRRMnQK",
       "endpoints": [
-        "https://github.com/naveedharri/opencontext/releases/latest/download/latest.json"
+        "https://github.com/naveedharri/baalda/releases/latest/download/latest.json"
       ]
     }
   }

@@ -9,6 +9,7 @@ import { SyncBadge } from "./components/Identity";
 import { SidebarHeader } from "./components/SidebarHeader";
 import { VaultPicker } from "./components/VaultPicker";
 import { bridgeManager } from "./lib/bridge";
+import { BRAND_NAME } from "./lib/brand";
 import * as ipc from "./lib/ipc";
 import { syncManager } from "./lib/sync/docSession";
 import { checkForUpdate, installUpdate, useUpdateState } from "./lib/updater";
@@ -117,7 +118,7 @@ function UpdateBanner() {
     return (
       <div className="banner update-banner">
         <span>
-          A new version of OpenContext (<strong>{update.version}</strong>) is
+          A new version of {BRAND_NAME} (<strong>{update.version}</strong>) is
           available.
         </span>
         <div className="banner-actions">

@@ -1,13 +1,13 @@
 ---
 type: status-tracker
-product: OpenContext
+product: Baalda
 date: 2026-07-13
-tags: [opencontext, status, roadmap]
+tags: [baalda, status, roadmap]
 ---
 
-# OpenContext — Build Status
+# Baalda — Build Status
 
-> Live checklist. Update as phases land. Back to index: [[OpenContext]].
+> Live checklist. Update as phases land. Back to index: [[Baalda]].
 
 ## Where we are
 
@@ -55,9 +55,9 @@ De-risk the hardest part before networking.
 - [x] Hocuspocus server + Postgres; store binary Y.Doc only (`doc_updates` + `doc_snapshots`).
 - [x] Client network provider (`@hocuspocus/provider`) alongside local persistence (`lib/sync`).
 - [x] Better Auth: accounts, email+password (argon2id), server-side sessions; token in OS keychain
-  (Rust `keyring` crate, service `com.opencontext.context`; `lib/auth` + `lib/api`).
+  (Rust `keyring` crate, service `com.baalda.context`; `lib/auth` + `lib/api`).
 - [x] `users` / `sessions` / `vaults` / `notes` tables; join notes↔docs on `doc_id` (registry
-  reconcile writes the server vault id + doc-id map to `.opencontext/config.json`).
+  reconcile writes the server vault id + doc-id map to `.context/config.json`).
 - **Milestone:** two of my own devices converge on the same vault through the server. ✔ (proven by the
   env-gated client↔server integration test: two providers converge).
 - Specs: [[03-sync-engine]], [[02-database-architecture]], [[04-team-collaboration]]

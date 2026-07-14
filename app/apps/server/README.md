@@ -1,6 +1,6 @@
-# OpenContext — Sync + App Server
+# Baalda — Sync + App Server
 
-The Node/TypeScript server for **OpenContext**: Better Auth (accounts +
+The Node/TypeScript server for **Baalda**: Better Auth (accounts +
 organizations), a folder/file ACL, per-doc sync-token minting, and a Hocuspocus
 Yjs sync engine backed by Postgres (binary Y.Doc store + compaction).
 
@@ -51,7 +51,7 @@ client can read and write the vault the same way a person does — gated by the
 
 ```bash
 # Example: register with Claude Code
-claude mcp add --transport http opencontext http://localhost:3010/api/mcp \
+claude mcp add --transport http context http://localhost:3010/api/mcp \
   --header "Authorization: Bearer mcp_…"
 ```
 
@@ -95,7 +95,7 @@ npm run build && npm run start
 
 | Var | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | `postgres://opencontext:opencontext@localhost:5439/opencontext` | Postgres. Docker maps host **5439** → container 5432 (avoids a local 5432 Postgres). |
+| `DATABASE_URL` | `postgres://context:context@localhost:5439/context` | Postgres. Docker maps host **5439** → container 5432 (avoids a local 5432 Postgres). |
 | `JWT_SECRET` | dev placeholder | Better Auth crypto **and** HS256 per-doc sync JWTs. **Change in production.** |
 | `BETTER_AUTH_URL` | `http://localhost:3010` | Base URL Better Auth uses for links. |
 | `PORT` | `3010` | HTTP API. |

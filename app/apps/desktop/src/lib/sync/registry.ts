@@ -6,7 +6,7 @@
 // path and create only what's missing. The resulting {relPath → {vaultId, docId}}
 // map is what the sync layer uses to name Hocuspocus documents.
 //
-// The mapping is persisted to the vault's own `.opencontext/config.json` (via ipc),
+// The mapping is persisted to the vault's own `.context/config.json` (via ipc),
 // so it travels with the vault, not the app profile.
 
 import {

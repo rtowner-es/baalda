@@ -1,11 +1,12 @@
-# OpenContext
+# Baalda
 
-**Context** is the product; **OpenContext** is the brand. A local-first desktop "second brain" where notes
-are plain `.md` files on disk that an AI can edit directly **and** that teammates edit together in real
-time. Every OSS competitor does one or the other; the whole product is the *bridge* between them.
+**Context** is the permanent internal codename; **Baalda** is the brand. A local-first desktop "second
+brain" where notes are plain `.md` files on disk that an AI can edit directly **and** that teammates
+edit together in real time. Every OSS competitor does one or the other; the whole product is the
+*bridge* between them.
 
 - All product docs live under `docs/` (only this `CLAUDE.md` stays at the repo root).
-- Docs index: `docs/OpenContext.md` · live build status: `docs/STATUS.md`
+- Docs index: `docs/Baalda.md` · live build status: `docs/STATUS.md` · branding policy: `docs/BRANDING.md`
 - Specs (source of truth for design): `docs/specs/00`–`04` + `docs/specs/REQUIREMENTS.md` (the 12-requirement yardstick)
 - Prior art scan: `docs/reference/OSS Second Brain Scan.md`
 
@@ -30,7 +31,7 @@ Monorepo at `app/` (npm workspaces); all docs and specs live under `docs/`.
 app/
 ├── apps/desktop/   Tauri v2 app. Rust core (src-tauri/) + React/Vite/TS UI (src/)
 └── apps/server/    Node/TS: Hono HTTP + Hocuspocus WS + Postgres + Better Auth + MCP
-docs/               OpenContext.md (index) · STATUS.md · specs/ · reference/
+docs/               Baalda.md (index) · STATUS.md · specs/ · reference/
 ```
 
 **Division of labor:** Rust owns *all* disk I/O and a derived SQLite index. The React/TS layer owns the
@@ -59,7 +60,7 @@ Build: `npm run build:desktop`.
   against a shared Postgres (`fileParallelism: false`).
 - Desktop TS (`app/apps/desktop`): `npm test` (vitest, node env). The bridge suites (`echo`, `concurrent`,
   `rewrite`, `roundtrip`) are the crown jewels — they gate correctness of the whole product. The sync
-  `integration` test is env-gated (`OPENCONTEXT_IT=1`, needs a live server).
+  `integration` test is env-gated (`CONTEXT_IT=1`, needs a live server).
 - Desktop Rust: `cargo test` in `src-tauri/` (unit tests inline per module + `tests/index_integration.rs`).
 
 > ⚠️ Running `npm test` in `apps/server` wipes the dev DB (users/orgs/vaults). Re-seed afterward.
@@ -69,17 +70,17 @@ Build: `npm run build:desktop`.
 ### Desktop — Rust core (`app/apps/desktop/src-tauri/src/`)
 Commands registered in `lib.rs`; `AppState` (`state.rs`) is one `Mutex` over `{ vault, index, watcher }`.
 Errors: single `AppError(String)` (`error.rs`).
-- `vault.rs` — path safety (`resolve_in_vault` rejects `..`/absolute/escape); ignores `.opencontext/`, `.git`, dotfiles.
+- `vault.rs` — path safety (`resolve_in_vault` rejects `..`/absolute/escape); ignores `.context/`, `.git`, dotfiles.
 - `tree.rs` — recursive walk to nested `TreeNode`; surfaces `.md`/`.html` only.
 - `notefile.rs` — **atomic writes** (temp + rename), `sha256_hex`.
 - `parse.rs` — `parse_note` → title / tags / `[[wikilinks]]` / frontmatter.
-- `index.rs` — SQLite at `<vault>/.opencontext/index.sqlite` (WAL): `notes` (id=`doc_id`, path UNIQUE),
+- `index.rs` — SQLite at `<vault>/.context/index.sqlite` (WAL): `notes` (id=`doc_id`, path UNIQUE),
   FTS5 `notes_fts`, `tags`/`note_tags`, `links`, `folders`, `yjs_updates`, `yjs_snapshot`. Notes keyed by
   `doc_id`; `rebuild` preserves ids and never wipes the CRDT tables; `rename_note` rewrites paths by id so
   backlinks survive moves.
 - `watcher.rs` — `notify` recursive watcher, 150ms-debounced, emits `file-changed {path, kind}`.
 - `attachments.rs` — path-validated binary I/O under `attachments/`; never enters the note/CRDT pipeline.
-- `keychain.rs` — `keyring` crate, service `com.opencontext.context`; trait-based so tests use a fake.
+- `keychain.rs` — `keyring` crate, service `com.baalda.context`; trait-based so tests use a fake.
 
 Tauri events to the UI: **`vault-opened`** and **`file-changed`** (the only two).
 
@@ -107,7 +108,7 @@ Pure TS with dependency-injected I/O so it runs under vitest in Node. `adapter.t
 - `startup.ts` (`decideSeed`) — **split-brain rule**: when signed in, pull from server FIRST, then seed a
   local orphan only if the doc is still empty. Reversing this causes permanent divergence.
 - `registry.ts` — reconciles local vault ↔ server vault/folders/notes, persists the doc-id map to
-  `.opencontext/config.json`, materializes server-only notes as empty files (hydrate lazily).
+  `.context/config.json`, materializes server-only notes as empty files (hydrate lazily).
 - `tokenRefresh.ts` — re-mint 60s before JWT expiry. `attachments.ts` — content-hash (sha256) diff, upload/download.
 
 ### Desktop — React (`src/`)
@@ -154,7 +155,7 @@ change in prod) · `BETTER_AUTH_URL` · `PORT` (3010) · `HOCUSPOCUS_PORT` (3011
 ## Conventions & gotchas
 
 - **`doc_id` is identity.** Never resolve or store a note by path across layers.
-- **`.opencontext/` is sacred and hidden** — never walk, sync, or index it. It holds `index.sqlite`, the CRDT
+- **`.context/` is sacred and hidden** — never walk, sync, or index it. It holds `index.sqlite`, the CRDT
   store, and `config.json` (server vault id + doc-id map; travels with the vault).
 - **Reuse patterns, not code.** We study OSS references (Noteriv, Relay, Hocuspocus, Better Auth) but write
   our own implementation.
@@ -165,7 +166,7 @@ change in prod) · `BETTER_AUTH_URL` · `PORT` (3010) · `HOCUSPOCUS_PORT` (3011
 - **Intentional spec deviations** (documented in-code): `index.rs` uses a *self-contained* FTS5 table (not
   the spec's contentless one) because `snippet()` needs content; `SearchPanel` renders the Rust FTS snippet
   via `dangerouslySetInnerHTML`, relying on Rust emitting only sanitized `<mark>` tags.
-- Product identifier: `co.opencontext.context`; Tauri `productName` is "OpenContext".
+- Product identifier: `com.baalda.context`; Tauri `productName` is "Baalda".
 
 ## Build state (see `docs/STATUS.md`)
 

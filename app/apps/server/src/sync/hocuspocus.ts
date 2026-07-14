@@ -31,7 +31,7 @@ export function createSyncServer(
   port: number = config.hocuspocusPort,
 ): Server<SyncContext> {
   return new Server<SyncContext>({
-    name: "opencontext-sync",
+    name: "context-sync",
     port,
     quiet: true,
 

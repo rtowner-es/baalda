@@ -442,8 +442,8 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [name, setName] = useState("");
   // Dev-only prefill of the local test account; production builds ship empty fields.
-  const [email, setEmail] = useState(import.meta.env.DEV ? "test@opencontext.local" : "");
-  const [password, setPassword] = useState(import.meta.env.DEV ? "OpenContext-Test-2026!" : "");
+  const [email, setEmail] = useState(import.meta.env.DEV ? "test@context.local" : "");
+  const [password, setPassword] = useState(import.meta.env.DEV ? "Context-Test-2026!" : "");
   const [urlDraft, setUrlDraft] = useState(serverUrl);
   const [busy, setBusy] = useState(false);
 
@@ -469,7 +469,7 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
         } catch (err) {
           // Dev convenience: the prefilled test account self-provisions on a
           // fresh database instead of dead-ending on "User not found".
-          if (import.meta.env.DEV && email.trim() === "test@opencontext.local") {
+          if (import.meta.env.DEV && email.trim() === "test@context.local") {
             await useStore.getState().signUp("Test User", email.trim(), password);
           } else {
             throw err;
@@ -1387,7 +1387,7 @@ function McpTab() {
   }
 
   const snippet = justCreated
-    ? `claude mcp add --transport http opencontext ${mcpUrl} \\\n  --header "Authorization: Bearer ${justCreated.token}"`
+    ? `claude mcp add --transport http context ${mcpUrl} \\\n  --header "Authorization: Bearer ${justCreated.token}"`
     : "";
 
   return (

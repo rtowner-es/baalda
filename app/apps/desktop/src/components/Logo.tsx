@@ -1,6 +1,9 @@
-// OpenContext brand logo — a viewfinder "bracket mark": two rounded square
+// Baalda brand logo — a viewfinder "bracket mark": two rounded square
 // brackets framing a dot. Brackets render in `currentColor` (set by the
 // caller); the dot is the fixed brand green. See tokens.css --brand-*.
+
+import wordmarkInk from "../assets/baalda-wordmark-ink.png";
+import wordmarkSilver from "../assets/baalda-wordmark-silver.png";
 
 export function BracketMark({
   size = 40,
@@ -40,11 +43,13 @@ export function BracketMark({
   );
 }
 
-/** The "[open]context" wordmark — brackets in brand green, words inherit. */
+/** The Baalda wordmark (neural mark in the second A). Ink version shows on
+ *  the light theme, silver on dark — switched in App.css. */
 export function Wordmark({ className }: { className?: string }) {
   return (
-    <span className={className}>
-      <span className="wm-bracket">[</span>open<span className="wm-bracket">]</span>context
+    <span className={`wordmark ${className ?? ""}`} aria-label="Baalda">
+      <img src={wordmarkInk} alt="" className="wordmark-img wordmark-ink" />
+      <img src={wordmarkSilver} alt="" className="wordmark-img wordmark-silver" />
     </span>
   );
 }

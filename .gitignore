@@ -26,4 +26,4 @@ logs/
 !.vscode/extensions.json
 
 # Local app data (derived index + CRDT store)
-.opencontext/
+.context/

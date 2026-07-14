@@ -1,17 +1,17 @@
 ---
 type: spec
 spec: requirements
-product: OpenContext
+product: Baalda
 status: draft-v1
 date: 2026-07-13
-tags: [opencontext, spec, requirements, features, mvp]
+tags: [baalda, spec, requirements, features, mvp]
 ---
 
 # Requirements & Feature Map
 
-The canonical list of what OpenContext must do, and where each requirement is satisfied. This
+The canonical list of what Baalda must do, and where each requirement is satisfied. This
 is the yardstick every other spec answers to. Source: the 12 hard requirements from the market scan
-([[OSS Second Brain Scan]], copied into `../reference/`). Index: [[OpenContext]].
+([[OSS Second Brain Scan]], copied into `../reference/`). Index: [[Baalda]].
 
 > [!important] Why these 12
 > The scan evaluated 41 OSS apps against these exact 12 requirements and **none passed all 12**. That
@@ -49,7 +49,7 @@ management) is a later UI layer, not an MVP dependency.
 ### Requirement #12 — the "open source" nuance
 
 In the scan, "genuinely open source" was a hard requirement because the question was *can we adopt or
-fork someone else's tool*. We are now **building our own product to sell** (OpenContext), so
+fork someone else's tool*. We are now **building our own product to sell** (Baalda), so
 whether *our* code is open source is a go-to-market decision (open-core, source-available, or closed),
 not an engineering requirement. Flagged here so it isn't silently dropped — decide it deliberately at
 launch. It does not affect any of the four technical specs.

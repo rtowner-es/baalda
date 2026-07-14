@@ -67,11 +67,11 @@ pub struct ResolvedLink {
 }
 
 impl Index {
-    /// Open (creating if needed) the index at `<vault>/.opencontext/index.sqlite`.
+    /// Open (creating if needed) the index at `<vault>/.context/index.sqlite`.
     pub fn open(vault: &Path) -> AppResult<Self> {
-        let opencontext = vault.join(".opencontext");
-        std::fs::create_dir_all(&opencontext)?;
-        let db_path = opencontext.join("index.sqlite");
+        let context_dir = vault.join(".context");
+        std::fs::create_dir_all(&context_dir)?;
+        let db_path = context_dir.join("index.sqlite");
         let conn = Connection::open(db_path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -192,7 +192,7 @@ impl Index {
         for entry in WalkDir::new(vault)
             .into_iter()
             .filter_entry(|e| {
-                // Skip ignored dirs entirely (don't descend into .opencontext/.git/dotfolders).
+                // Skip ignored dirs entirely (don't descend into .context/.git/dotfolders).
                 let name = e.file_name().to_string_lossy();
                 !(e.depth() > 0 && is_ignored_name(&name))
             })
@@ -597,7 +597,7 @@ impl Index {
 
         let map = |r: &rusqlite::Row| Ok(ResolvedLink { id: r.get(0)?, path: r.get(1)? });
 
-        // 1. Full relative path (e.g. "Projects/OpenContext").
+        // 1. Full relative path (e.g. "Projects/Baalda").
         let full_md = format!("{target}.md");
         if let Some(hit) = self
             .conn

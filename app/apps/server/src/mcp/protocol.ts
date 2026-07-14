@@ -12,7 +12,7 @@ import { TOOLS, TOOLS_BY_NAME } from "./tools.js";
  * never needs to push unsolicited messages.
  */
 
-const SERVER_INFO = { name: "opencontext", version: "0.1.0" } as const;
+const SERVER_INFO = { name: "context", version: "0.1.0" } as const;
 /** The protocol revision we implement; we echo a client's version when sane. */
 const PROTOCOL_VERSION = "2025-06-18";
 

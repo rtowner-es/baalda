@@ -1,8 +1,8 @@
 // End-to-end client↔server integration (spec 03/04). Env-gated: it needs the
 // real server running (`npm run dev -w server`, with Docker Postgres up + migrated)
-// on :3010 (HTTP) / :3011 (Hocuspocus). Enable with OPENCONTEXT_IT=1.
+// on :3010 (HTTP) / :3011 (Hocuspocus). Enable with CONTEXT_IT=1.
 //
-//   OPENCONTEXT_IT=1 npm test -w desktop -- integration
+//   CONTEXT_IT=1 npm test -w desktop -- integration
 //
 // It exercises the actual client modules: ApiClient (auth token capture, org,
 // vault, note registration, sync-token minting) and DocSync (HocuspocusProvider
@@ -15,8 +15,8 @@ import * as Y from "yjs";
 import { ApiClient } from "../../api";
 import { DocSync } from "../syncManager";
 
-const RUN = process.env.OPENCONTEXT_IT === "1";
-const SERVER = process.env.OPENCONTEXT_SERVER ?? "http://localhost:3010";
+const RUN = process.env.CONTEXT_IT === "1";
+const SERVER = process.env.CONTEXT_SERVER ?? "http://localhost:3010";
 
 function waitFor(cond: () => boolean, timeoutMs = 8000, label = "condition"): Promise<void> {
   return new Promise((resolve, reject) => {
