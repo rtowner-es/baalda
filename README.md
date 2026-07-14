@@ -11,6 +11,8 @@
 ![Status](https://img.shields.io/badge/status-released-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
+**[baalda.com](https://baalda.com)** · [Download](https://baalda.com/download) · [Docs](docs/Baalda.md) · [Pricing](https://baalda.com/pricing)
+
 </div>
 
 <!-- Add a screenshot or short demo GIF here for the best first impression:
@@ -133,6 +135,13 @@ npm run dev:desktop       # launches the Tauri app (Vite on :1420)
 ```
 
 Open a folder of Markdown files (or create a new one) and start writing.
+
+### Prefer not to run a server?
+
+Everything above is self-hosted and free. If you'd rather skip the backend ops,
+[baalda.com](https://baalda.com) offers a managed backend for multi-device sync,
+real-time team collaboration, and hosted AI. The desktop app is identical either
+way: point it at our server or your own via the server URL in Settings.
 
 ---
 
