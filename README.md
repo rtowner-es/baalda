@@ -8,7 +8,7 @@
 ![Built with Tauri v2](https://img.shields.io/badge/built%20with-Tauri%20v2-24C8DB)
 ![Rust](https://img.shields.io/badge/core-Rust-000000?logo=rust&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript&logoColor=white)
-![Status](https://img.shields.io/badge/status-MVP%20complete%20(Phases%200–3)-brightgreen)
+![Status](https://img.shields.io/badge/status-released-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 </div>
@@ -156,7 +156,7 @@ The AI can now `read_note`, `search_notes`, `create_note`, `update_note`, and mo
 
 ## Project status
 
-🟢 **MVP complete.** The core product (Phases 0–3) is built, wired end-to-end, and tested — delivering **10 of the 12** target requirements, including the two no other open-source tool combined: AI-editable plain files **and** built-in real-time collaboration.
+🟢 **Released.** The core product is built, wired end-to-end, and tested — delivering **10 of the 12** target requirements, including the two no other open-source tool combined: AI-editable plain files **and** built-in real-time collaboration.
 
 | Phase | Scope | Status |
 |---|---|---|

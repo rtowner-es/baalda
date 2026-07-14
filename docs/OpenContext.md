@@ -4,7 +4,7 @@ product: OpenContext
 brand: OpenContext
 status: specs-complete · build-not-started
 date: 2026-07-13
-tags: [opencontext, second-brain, spec, mvp, build-from-scratch]
+tags: [opencontext, second-brain, spec, build-from-scratch]
 ---
 
 # OpenContext
@@ -22,13 +22,13 @@ why, the chosen stack, and the live status.
 
 ## The goal
 
-Build **OpenContext** from scratch, MVP-first, nothing fancy. We reuse *patterns and
+Build **OpenContext** from scratch, smallest-useful-thing first, nothing fancy. We reuse *patterns and
 architecture* from open-source projects (Noteriv, OpenKnowledge, Relay, Hocuspocus, Better Auth)
 but write our own code — we do not ship other people's code.
 
 The seed research: [[OSS Second Brain Scan]] (copy in `reference/`) scanned 41 OSS Obsidian-like apps
 against **12 requirements** and found **none satisfies all 12**. Those 12 are now our product
-requirements — see [[REQUIREMENTS]] for the full list and how each maps to a spec and MVP phase. The
+requirements — see [[REQUIREMENTS]] for the full list and how each maps to a spec and phase. The
 reason no tool passed is structural, not a gap in the market:
 
 - **AI-editable plain `.md`** needs loose markdown on disk as the source of truth.
@@ -79,7 +79,7 @@ round-trip lossless. Full detail: [[03-sync-engine]].
 
 | Spec | Covers |
 |---|---|
-| [[REQUIREMENTS]] | The 12 core requirements + supporting features, each mapped to a spec and MVP phase (the yardstick) |
+| [[REQUIREMENTS]] | The 12 core requirements + supporting features, each mapped to a spec and phase (the yardstick) |
 | [[00-architecture-overview]] | How the four pillars fit; the md↔CRDT bridge; full data-flow diagram; principles |
 | [[01-desktop-app]] | Tauri 2 shell, React/CM6, react-arborist, the Rust command surface, editor UX |
 | [[02-database-architecture]] | On-disk vault layout, local SQLite index schema, server Postgres + Yjs binary stores |
@@ -103,8 +103,8 @@ See [[STATUS]] for the live build checklist.
    layer. If we lose the server tomorrow, the user still has their vault.
 2. **The bridge is the product.** Everything hard lives in file↔CRDT reconciliation. Build it early,
    test it hard (golden round-trip tests, echo-loop tests, concurrent-edit tests).
-3. **MVP-first, layer up.** Ship a single-user local Obsidian-lite before any networking. Each phase
-   is independently useful.
+3. **Smallest useful thing first.** Ship a single-user local Obsidian-lite before any networking. Each
+   phase is independently useful.
 4. **Rust owns disk; UI is stateless about files.** The web UI never touches the filesystem — it
    calls typed Rust commands and subscribes to events.
 5. **Reuse patterns, not code.** Study the OSS references, own our implementation.

@@ -17,13 +17,13 @@ tags: [opencontext, status, roadmap]
   are wired end-to-end and tested.
 - **Next action:** Phase 4 polish / launch decisions (WYSIWYG, vector search, OAuth, iOS).
 
-> **Requirement coverage:** the MVP (Phases 0–3) delivers **10 of the 12** core requirements —
+> **Requirement coverage:** Phases 0–3 deliver **10 of the 12** core requirements —
 > including the two no OSS tool combined (#7 AI-editable plain files + #11 built-in real-time collab).
 > Deferred: #8 iOS (Phase 4) and #12 open source (a launch/business decision). Full map: [[REQUIREMENTS]].
 
 ---
 
-## MVP build order
+## Build order
 
 Each phase is independently useful and ships something real. Do not start a phase before the prior
 one is solid — especially do not add networking (Phase 2) before the bridge (Phase 1) is tested.
@@ -71,7 +71,7 @@ De-risk the hardest part before networking.
   enforce; client mints per doc, refreshes before expiry, and makes the editor read-only for view grants.
 - [x] Yjs awareness: live cursors (y-codemirror.next + CSS) + "who's viewing this note" avatars;
   deterministic per-user color.
-- [x] Attachment blob store — Postgres **BYTEA** store for the MVP (S3/R2 via the reserved
+- [x] Attachment blob store — Postgres **BYTEA** store for v0.1 (S3/R2 via the reserved
   `storage_url` is a production upgrade). Session-authed vault blob routes (upload w/ server-side
   sha256 + per-vault dedupe, list, download), path-validated Rust binary I/O, and a content-hash
   client sync that mirrors `attachments/` both ways (debounced on watcher events; never CRDT-indexed).
@@ -86,7 +86,7 @@ De-risk the hardest part before networking.
 > local orphan only if the doc is still empty — preventing split-brain. Remote provider edits DO egest
 > to the local `.md` (only `'disk'`-origin changes are dropped).
 
-### Phase 4 — Polish / upgrades _(deferred, not MVP)_ ⬜
+### Phase 4 — Polish / upgrades _(deferred)_ ⬜
 - [ ] Structural rich-text CRDT (y-prosemirror / `Y.XmlFragment`) for full WYSIWYG.
 - [ ] Vector / hybrid search (Orama) for semantic + AI retrieval.
 - [ ] AI-as-CRDT-peer for live collaborative sessions.
@@ -97,11 +97,11 @@ De-risk the hardest part before networking.
 
 ## Open decisions / risks to revisit
 
-- **Sync backend:** committed to **Hocuspocus** for MVP (all-TS, colocates with Better Auth). Revisit
+- **Sync backend:** committed to **Hocuspocus** for v0.1 (all-TS, colocates with Better Auth). Revisit
   **y-sweet** (Rust, S3-backed, what Relay forked) if we want zero doc-DB ops or hit Node scale limits.
-- **CRDT model:** `Y.Text`-of-markdown for MVP. Move to structural `Y.XmlFragment` only when WYSIWYG
+- **CRDT model:** `Y.Text`-of-markdown for v0.1. Move to structural `Y.XmlFragment` only when WYSIWYG
   is a product requirement (Phase 4) — it reintroduces lossy markdown serialization.
 - **Bus-factor of references:** Noteriv/memrynote/YAOS are solo-maintainer projects. We study them,
   we don't depend on them. Hocuspocus/Better Auth/Yjs are the funded, safe dependencies.
-- **Yjs at scale:** some teams report pain; not an MVP concern. Loro is the re-evaluation candidate
+- **Yjs at scale:** some teams report pain; not a v0.1 concern. Loro is the re-evaluation candidate
   if on-disk CRDT size becomes a cost.
