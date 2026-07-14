@@ -24,7 +24,7 @@
 
 Baalda is a local-first desktop app for notes and knowledge: your second brain. Every note is a plain `.md` file on your own disk, so your data is always yours. What makes Baalda different is that those same files are:
 
-- **Editable by AI.** Connect Claude or any MCP client and it reads and writes your notes directly, the way a teammate would.
+- **Editable by AI.** Because notes are plain files, a local agent like Claude Code edits them right on your disk with zero setup. Cloud and autonomous agents connect through the built-in MCP endpoint. Either way, the AI works your notes like a teammate would.
 - **Shared in real time.** Invite people, share a folder, and edit the same note together with live cursors.
 
 You get the openness of local Markdown files *and* the collaboration of a shared doc, in one app.
@@ -49,7 +49,7 @@ We scanned **41** open-source Obsidian-like apps against **12 core requirements*
 ## Highlights
 
 - 📄 **Your notes are just files.** Plain `.md` on disk. No lock-in, works with Git, and survives even if the server disappears.
-- 🤖 **AI-editable.** A built-in [MCP](#-connect-an-ai-mcp) endpoint lets any AI client read and write your vault, gated by the exact same permissions as a human.
+- 🤖 **AI-editable, two ways.** Local-first means a local agent (Claude Code, Codex, any CLI tool) edits the `.md` files directly, no integration needed. Autonomous and cloud agents use the built-in [MCP](#-connect-an-ai-mcp) endpoint, gated by the exact same permissions as a human. Both paths merge live with everyone else's edits.
 - 👥 **Real-time collaboration.** Invite teammates, share folders or single files (view or edit), and see live cursors and who's viewing a note.
 - 🔒 **Local-first and private.** A full desktop app that works offline. Your Markdown never travels the network in plain text; only opaque binary sync updates do, and each device re-derives its own `.md` files.
 - 🔎 **Fast search and links.** Built-in full-text search (SQLite FTS5), backlinks, and tags, all indexed locally.
@@ -147,7 +147,9 @@ way: point it at our server or your own via the server URL in Settings.
 
 ## 🤖 Connect an AI (MCP)
 
-Baalda exposes a **Model Context Protocol** endpoint, so any MCP-speaking AI client can work with your vault exactly like a person, limited by the same per-folder permissions.
+A **local** agent needs no setup at all: point Claude Code (or any tool) at your vault folder and it edits the `.md` files directly. The watcher picks up every change and syncs it live to your team.
+
+For **cloud and autonomous agents** that can't reach your disk, Baalda exposes a **Model Context Protocol** endpoint, so any MCP-speaking AI client can work with your vault exactly like a person, limited by the same per-folder permissions.
 
 1. In the app, go to **Workspace settings → MCP** and create a token.
 2. Register the endpoint with your AI client, e.g. Claude Code:
