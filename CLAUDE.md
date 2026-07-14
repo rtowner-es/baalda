@@ -4,9 +4,10 @@
 are plain `.md` files on disk that an AI can edit directly **and** that teammates edit together in real
 time. Every OSS competitor does one or the other; the whole product is the *bridge* between them.
 
-- Docs index: `OpenContext.md` · live build status: `STATUS.md`
-- Specs (source of truth for design): `specs/00`–`04` + `specs/REQUIREMENTS.md` (the 12-requirement yardstick)
-- Prior art scan: `reference/OSS Second Brain Scan.md`
+- All product docs live under `docs/` (only this `CLAUDE.md` stays at the repo root).
+- Docs index: `docs/OpenContext.md` · live build status: `docs/STATUS.md`
+- Specs (source of truth for design): `docs/specs/00`–`04` + `docs/specs/REQUIREMENTS.md` (the 12-requirement yardstick)
+- Prior art scan: `docs/reference/OSS Second Brain Scan.md`
 
 ## The one idea to hold in your head
 
@@ -23,12 +24,13 @@ Two invariants everything depends on:
 
 ## Repo layout
 
-Monorepo at `app/` (npm workspaces). Everything else at the root is docs/specs.
+Monorepo at `app/` (npm workspaces); all docs and specs live under `docs/`.
 
 ```
 app/
 ├── apps/desktop/   Tauri v2 app. Rust core (src-tauri/) + React/Vite/TS UI (src/)
 └── apps/server/    Node/TS: Hono HTTP + Hocuspocus WS + Postgres + Better Auth + MCP
+docs/               OpenContext.md (index) · STATUS.md · specs/ · reference/
 ```
 
 **Division of labor:** Rust owns *all* disk I/O and a derived SQLite index. The React/TS layer owns the
@@ -165,7 +167,7 @@ change in prod) · `BETTER_AUTH_URL` · `PORT` (3010) · `HOCUSPOCUS_PORT` (3011
   via `dangerouslySetInnerHTML`, relying on Rust emitting only sanitized `<mark>` tags.
 - Product identifier: `co.opencontext.context`; Tauri `productName` is "OpenContext".
 
-## Build state (see `STATUS.md`)
+## Build state (see `docs/STATUS.md`)
 
 Phases 0–3 are complete and wired end-to-end: local Obsidian-lite → local CRDT bridge → sync server
 (multi-device) → team collaboration (orgs, folder ACL, presence, attachments) — plus MCP, locks, join
