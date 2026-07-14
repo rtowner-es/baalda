@@ -9,6 +9,7 @@
 ![Rust](https://img.shields.io/badge/core-Rust-000000?logo=rust&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/UI-TypeScript-3178C6?logo=typescript&logoColor=white)
 ![Status](https://img.shields.io/badge/status-MVP%20complete%20(Phases%200–3)-brightgreen)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 </div>
 
@@ -190,4 +191,13 @@ Issues and pull requests are welcome. If you're planning a larger change, please
 
 ## License
 
-License to be determined. Until one is added, all rights are reserved by the authors.
+OpenContext is open source under the **[Apache License 2.0](LICENSE)** — use it,
+self-host it, modify it, and build commercial products on it, freely.
+
+The **OpenContext** name and brand are trademarks and are **not** covered by the
+code license — see the [Trademark Policy](TRADEMARK.md). You're welcome to fork
+and run the code; please give your version its own name.
+
+Contributions are welcome under the same license — **no CLA required**. See
+[CONTRIBUTING.md](CONTRIBUTING.md), and report vulnerabilities via
+[SECURITY.md](SECURITY.md).

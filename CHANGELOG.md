@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to OpenContext are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Open-source project setup: Apache-2.0 `LICENSE`, `NOTICE`, `CONTRIBUTING.md`,
+  `SECURITY.md`, `CODE_OF_CONDUCT.md`, `TRADEMARK.md`, and GitHub issue/PR
+  templates.
+
+## [0.1.0] — Phases 0–3 (MVP complete)
+
+### Added
+- Local-first desktop app (Tauri v2 + React/TS) with Markdown files as the
+  source of truth.
+- Markdown ↔ CRDT bridge (Yjs `Y.Text`) with echo-loop guards and convergence.
+- Sync server (Hono HTTP + Hocuspocus WS + Postgres) for multi-device sync.
+- Team collaboration: organizations, folder/file ACLs, presence, live cursors,
+  attachments, locks, and join codes.
+- MCP endpoint for AI clients, gated by the same per-file permissions.
+- Local search (SQLite FTS5), backlinks, tags, and a graph view.
+- Semantic search via a dependency-free hashed embedder.
+
+[Unreleased]: https://github.com/naveedharri/opencontext/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/naveedharri/opencontext/releases/tag/v0.1.0

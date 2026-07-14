@@ -3,6 +3,7 @@ name = "desktop"
 version = "0.1.0"
 description = "OpenContext — local-first markdown app"
 authors = ["OpenContext"]
+license = "Apache-2.0"
 edition = "2021"
 
 [lib]
