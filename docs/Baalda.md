@@ -26,7 +26,7 @@ Build **Baalda** from scratch, smallest-useful-thing first, nothing fancy. We re
 architecture* from open-source projects (Noteriv, OpenKnowledge, Relay, Hocuspocus, Better Auth)
 but write our own code. We do not ship other people's code.
 
-The seed research: [[OSS Second Brain Scan]] (copy in `reference/`) scanned 41 OSS Obsidian-like apps
+The seed research scanned 41 OSS Obsidian-like apps
 against **12 requirements** and found **none satisfies all 12**. Those 12 are now our product
 requirements. See [[REQUIREMENTS]] for the full list and how each maps to a spec and phase. The
 reason no tool passed is structural, not a gap in the market:

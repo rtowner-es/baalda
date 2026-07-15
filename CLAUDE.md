@@ -8,7 +8,6 @@ edit together in real time. Every OSS competitor does one or the other; the whol
 - All product docs live under `docs/` (only this `CLAUDE.md` stays at the repo root).
 - Docs index: `docs/Baalda.md` · live build status: `docs/STATUS.md` · branding policy: `docs/BRANDING.md`
 - Specs (source of truth for design): `docs/specs/00`–`04` + `docs/specs/REQUIREMENTS.md` (the 12-requirement yardstick)
-- Prior art scan: `docs/reference/OSS Second Brain Scan.md`
 
 ## System landscape (what lives where)
 
@@ -51,7 +50,7 @@ Monorepo at `app/` (npm workspaces); all docs and specs live under `docs/`.
 app/
 ├── apps/desktop/   Tauri v2 app. Rust core (src-tauri/) + React/Vite/TS UI (src/)
 └── apps/server/    Node/TS: Hono HTTP + Hocuspocus WS + Postgres + Better Auth + MCP
-docs/               Baalda.md (index) · STATUS.md · specs/ · reference/
+docs/               Baalda.md (index) · STATUS.md · specs/
 ```
 
 **Division of labor:** Rust owns *all* disk I/O and a derived SQLite index. The React/TS layer owns the

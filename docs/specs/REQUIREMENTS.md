@@ -10,8 +10,8 @@ tags: [baalda, spec, requirements, features, mvp]
 # Requirements & Feature Map
 
 The canonical list of what Baalda must do, and where each requirement is satisfied. This
-is the yardstick every other spec answers to. Source: the 12 hard requirements from the market scan
-([[OSS Second Brain Scan]], copied into `../reference/`). Index: [[Baalda]].
+is the yardstick every other spec answers to. Source: the 12 hard requirements from the market scan.
+Index: [[Baalda]].
 
 > [!important] Why these 12
 > The scan evaluated 41 OSS apps against these exact 12 requirements and **none passed all 12**. That
