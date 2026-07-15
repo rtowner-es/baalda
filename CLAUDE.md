@@ -10,6 +10,26 @@ edit together in real time. Every OSS competitor does one or the other; the whol
 - Specs (source of truth for design): `docs/specs/00`–`04` + `docs/specs/REQUIREMENTS.md` (the 12-requirement yardstick)
 - Prior art scan: `docs/reference/OSS Second Brain Scan.md`
 
+## System landscape (what lives where)
+
+Three pieces; this open-source repo holds the first two.
+
+- **Desktop app** (`app/apps/desktop`) — the product people install. Released by pushing a
+  `v*` tag: `.github/workflows/release.yml` builds signed installers for macOS/Windows/Linux and
+  drafts a GitHub Release with `latest.json`; publishing the draft is what makes running apps
+  see the update (Tauri updater polls `releases/latest`).
+- **Backend server** (`app/apps/server`) — open source and self-hostable (Node + Postgres).
+  The managed option runs this **same server code**; users choose an instance via the server
+  URL in Settings. There is no separate "managed edition" of the server.
+- **Website + managed service** — a separate **private** repo (`baalda-web`), the marketing and
+  managed-service site at [baalda.com](https://baalda.com). The README links baalda.com as the
+  managed option, and that is the only mention this repo gets.
+
+**Boundary rule:** this repo is public. Never commit anything about how *our* managed instance
+is operated — hosting/provider, deploy config for our instance, domains/DNS, dashboards,
+billing, or secrets. Managed-service work happens in private repos; commercial-only *features*
+(if source-available) go under `ee/`.
+
 ## The one idea to hold in your head
 
 `.md` files on disk are the **durable source of truth**. A per-note Yjs **`Y.Text` holding the raw
@@ -104,7 +124,8 @@ Pure TS with dependency-injected I/O so it runs under vitest in Node. `adapter.t
 - `docSession.ts` (`syncManager`) — owns the registry, current `DocSync`, presence, attachments.
 - `syncManager.ts` (`DocSync`) — `HocuspocusProvider` over the bridge's `Y.Doc`; doc name
   `vault:<vaultId>/note:<docId>`. Token is a **function** re-minted per (re)connect via `POST /api/sync-token`;
-  403 → `no-access`. WS URL derived by swapping http→ws and 3010→3011.
+  403 → `no-access`. WS URL derived from the server URL (`deriveWsUrl`): explicit port 3010 →
+  legacy dedicated port 3011; any other/no port → same-origin `ws(s)://…/sync` (single-port topology).
 - `startup.ts` (`decideSeed`) — **split-brain rule**: when signed in, pull from server FIRST, then seed a
   local orphan only if the doc is still empty. Reversing this causes permanent divergence.
 - `registry.ts` — reconciles local vault ↔ server vault/folders/notes, persists the doc-id map to
@@ -119,8 +140,11 @@ canvas force sim (no deps). Live-preview and inline-HTML rendering sanitize aggr
 script/style/iframe, strip `on*`/`javascript:`).
 
 ### Server (`app/apps/server/src/`)
-Two listeners, one Node process (`index.ts`): Hocuspocus WS (:3011) + Hono HTTP (:3010). MCP writes flow
-through the same sync server via `createDocWriter` so AI edits persist/broadcast like human edits.
+Two listeners, one Node process (`index.ts`): Hocuspocus WS (:3011) + Hono HTTP (:3010). The same
+Hocuspocus instance is also served on the HTTP port at `/sync` (`sync/http-upgrade.ts`) so the whole
+server runs behind a single port/domain — that's what production deploys use (Dockerfile +
+`railway.json` + `docs/DEPLOY.md`; migrations run pre-deploy via `npm run migrate:deploy`). MCP writes
+flow through the same sync server via `createDocWriter` so AI edits persist/broadcast like human edits.
 - `auth/auth.ts` — Better Auth; **argon2id** (overrides default scrypt) via `@node-rs/argon2`; `bearer` +
   `organization` plugins (org = workspace; roles owner/admin/member; 48h invitations). Session token is
   opaque (instant revocation), stored client-side only in the OS keychain.

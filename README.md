@@ -143,6 +143,13 @@ Everything above is self-hosted and free. If you'd rather skip the backend ops,
 real-time team collaboration, and hosted AI. The desktop app is identical either
 way: point it at our server or your own via the server URL in Settings.
 
+Want to run the server yourself in Docker or on Railway instead of your laptop?
+See [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+<!-- Deploy on Railway button goes here once a template is published from the
+     Railway dashboard (Project → Settings → generate template). The button
+     URL is generated at publish time, so this stays a placeholder until then. -->
+
 ---
 
 ## 🤖 Connect an AI (MCP)
