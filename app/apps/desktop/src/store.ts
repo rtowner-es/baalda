@@ -19,6 +19,14 @@ import {
 import { authManager } from "./lib/auth/authManager";
 import { syncManager } from "./lib/sync/docSession";
 import type { SyncStatus } from "./lib/sync/syncManager";
+import { createWithUniqueSlug, slugifyName } from "./lib/orgSlug";
+import {
+  type ActivityStatus,
+  readActivityStatus,
+  readMentionSound,
+  writeActivityStatus,
+  writeMentionSound,
+} from "./lib/prefs";
 import { seedWelcomeContent, vaultIsEmpty, WELCOME_NOTE_PATH } from "./lib/vault/seed";
 
 export interface OpenNote {
@@ -73,6 +81,12 @@ interface AppStore {
   /** Set when the active workspace still needs a local folder chosen. */
   pendingWorkspaceFolder: PendingWorkspaceFolder | null;
 
+  // ---- Account-level preferences (follow the app, not any workspace) ----
+  /** The user's chosen activity status; broadcast to teammates via presence. */
+  activityStatus: ActivityStatus;
+  /** Whether the mention chime plays when someone pings you. */
+  mentionSound: boolean;
+
   setVault: (v: ipc.VaultInfo | null) => void;
   setItemColor: (path: string, colorId: string | null) => void;
   setItemOrder: (order: ItemOrder) => void;
@@ -95,6 +109,12 @@ interface AppStore {
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   setServerUrl: (url: string) => Promise<void>;
+
+  // Account profile & preferences
+  /** Update display name / avatar (server-backed; refreshes the session). */
+  updateProfile: (input: { name?: string; image?: string | null }) => Promise<void>;
+  setActivityStatus: (status: ActivityStatus) => void;
+  setMentionSound: (enabled: boolean) => void;
 
   // Workspace actions
   refreshWorkspace: () => Promise<void>;
@@ -133,14 +153,8 @@ interface AppStore {
   enableSyncForVault: () => Promise<void>;
 }
 
-function slugify(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  // Keep it unique-ish without Date.now (deterministic enough for MVP).
-  return base || "workspace";
-}
+// Slug derivation for local folder naming reuses the org slug rules.
+const slugify = slugifyName;
 
 // Each workspace has its own notes, so remember which local folder was last
 // used with each workspace and swap to it on switch.
@@ -228,6 +242,8 @@ export const useStore = create<AppStore>((set, get) => ({
   itemColors: {},
   itemOrder: {},
   pendingWorkspaceFolder: null,
+  activityStatus: readActivityStatus(),
+  mentionSound: readMentionSound(),
 
   setVault: (v) =>
     set({
@@ -440,6 +456,26 @@ export const useStore = create<AppStore>((set, get) => ({
     }
   },
 
+  updateProfile: async ({ name, image }) => {
+    await authManager.api.updateUser({ name, image });
+    // Better Auth's update-user returns a status flag, not the user — re-fetch
+    // the session so the store (and every avatar/name in the UI) updates.
+    const session = await authManager.currentSession();
+    set({ session });
+  },
+
+  setActivityStatus: (status) => {
+    writeActivityStatus(status);
+    set({ activityStatus: status });
+    // Re-broadcast immediately on any live note presence.
+    syncManager.setPresenceStatus(status);
+  },
+
+  setMentionSound: (enabled) => {
+    writeMentionSound(enabled);
+    set({ mentionSound: enabled });
+  },
+
   // ---- Workspace ----
 
   refreshWorkspace: async () => {
@@ -475,7 +511,9 @@ export const useStore = create<AppStore>((set, get) => ({
   },
 
   createOrganization: async (name) => {
-    const org = await authManager.api.createOrganization({ name, slug: slugify(name) });
+    const org = await createWithUniqueSlug(name, (input) =>
+      authManager.api.createOrganization(input),
+    );
     // Route through the switch path so a brand-new workspace prompts for its
     // own folder instead of adopting whatever folder is currently open.
     await get().setActiveOrganization(org.id);
@@ -695,6 +733,8 @@ export const useStore = create<AppStore>((set, get) => ({
     const result = await syncManager.enable(session, tree, vault.name);
     set({ syncEnabled: result.ok });
     if (result.ok) {
+      // Broadcast the user's current activity status on this session's presence.
+      syncManager.setPresenceStatus(get().activityStatus);
       // This folder is now the one this workspace opens with.
       if (session.activeOrganizationId) {
         rememberOrgVault(session.activeOrganizationId, vault.path);

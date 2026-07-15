@@ -18,6 +18,7 @@ import {
   useUpdateState,
 } from "../lib/updater";
 import { readOrgVaults, useStore } from "../store";
+import { AccountSettings } from "./AccountSettings";
 import { Avatar, SyncBadge } from "./Identity";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -40,6 +41,7 @@ export function AccountMenu() {
   const [open, setOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Close the popover on outside click or Escape.
@@ -145,9 +147,14 @@ export function AccountMenu() {
             setOpen(false);
             setMembersOpen(true);
           }}
+          onOpenAccount={() => {
+            setOpen(false);
+            setAccountOpen(true);
+          }}
         />
       )}
       {membersOpen && <WorkspaceSettingsDialog onClose={() => setMembersOpen(false)} />}
+      {accountOpen && <AccountSettings onClose={() => setAccountOpen(false)} />}
     </div>
   );
 }
@@ -155,9 +162,11 @@ export function AccountMenu() {
 function AccountPopover({
   onClose,
   onOpenMembers,
+  onOpenAccount,
 }: {
   onClose: () => void;
   onOpenMembers: () => void;
+  onOpenAccount: () => void;
 }) {
   const session = useStore((s) => s.session);
   const organizations = useStore((s) => s.organizations);
@@ -167,15 +176,12 @@ function AccountPopover({
   const syncStatus = useStore((s) => s.syncStatus);
   const syncEnabled = useStore((s) => s.syncEnabled);
   const lastSyncedAt = useStore((s) => s.lastSyncedAt);
-  const serverUrl = useStore((s) => s.serverUrl);
 
   const [creating, setCreating] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [joining, setJoining] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [showServer, setShowServer] = useState(false);
-  const [urlDraft, setUrlDraft] = useState(serverUrl);
   const [busy, setBusy] = useState(false);
 
   if (!session) return null;
@@ -360,43 +366,15 @@ function AccountPopover({
       )}
 
       <div className="menu-sep" />
-      <div className="menu-label">Preferences</div>
 
-      <div className="menu-row">
-        <span className="menu-row-label">Appearance</span>
-        <ThemeToggle />
-      </div>
-
-      <button className="menu-item subtle" onClick={() => setShowServer((v) => !v)}>
+      <button className="menu-item" onClick={onOpenAccount}>
         <MenuIcon>
-          <rect x="2" y="2" width="20" height="8" rx="2" />
-          <rect x="2" y="14" width="20" height="8" rx="2" />
-          <path d="M6 6h.01M6 18h.01" />
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
         </MenuIcon>
-        <span className="menu-item-label">Server</span>
-        <span className="menu-hint" title={serverUrl}>
-          {serverUrl.replace(/^https?:\/\//, "")}
-        </span>
+        <span className="menu-item-label">Account settings</span>
+        <span className="menu-hint">Profile, status, theme</span>
       </button>
-      {showServer && (
-        <div className="menu-create-org">
-          <input
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            placeholder="http://localhost:3010"
-            spellCheck={false}
-          />
-          <button
-            className="primary sm"
-            onClick={() => {
-              void useStore.getState().setServerUrl(urlDraft.trim());
-              setShowServer(false);
-            }}
-          >
-            Save
-          </button>
-        </div>
-      )}
 
       <div className="menu-sep" />
       <button

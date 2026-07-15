@@ -158,4 +158,16 @@ describe("ApiClient against a mocked fetch", () => {
     const api = new ApiClient({ baseUrl: "http://localhost:3010", fetchImpl: impl });
     expect(await api.getAuthMethods()).toEqual({ emailPassword: true, google: false });
   });
+
+  it("updateUser posts name/image to Better Auth update-user", async () => {
+    const { impl, calls } = fakeFetch((call) => {
+      expect(call.url).toContain("/api/auth/update-user");
+      return { json: { status: true } };
+    });
+    const api = new ApiClient({ baseUrl: "http://localhost:3010", token: "t", fetchImpl: impl });
+    await api.updateUser({ name: "Ada Lovelace", image: "https://x/y.jpg" });
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].body).toEqual({ name: "Ada Lovelace", image: "https://x/y.jpg" });
+    expect(calls[0].headers.Authorization).toBe("Bearer t");
+  });
 });

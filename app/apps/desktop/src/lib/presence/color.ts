@@ -2,6 +2,8 @@
 // derived from their stable id so it's identical across every client and every
 // session — no server round-trip, no per-connection randomness.
 
+import type { ActivityStatus } from "../prefs";
+
 /**
  * A curated palette of bright, cheerful hues harmonized with the violet accent.
  * Deliberately excludes red/orange tones — a red ring reads as an error, not a
@@ -49,8 +51,14 @@ export interface PresenceUser {
   id: string;
   name: string;
   color: string;
+  /** The user's chosen activity status, so peers can show it beside cursors. */
+  status?: ActivityStatus;
 }
 
-export function presenceUser(userId: string, name: string): PresenceUser {
-  return { id: userId, name, color: colorForUser(userId) };
+export function presenceUser(
+  userId: string,
+  name: string,
+  status?: ActivityStatus,
+): PresenceUser {
+  return { id: userId, name, color: colorForUser(userId), ...(status ? { status } : {}) };
 }

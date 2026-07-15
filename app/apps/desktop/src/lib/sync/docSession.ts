@@ -17,6 +17,7 @@ import type { TreeNode } from "../ipc";
 import * as ipc from "../ipc";
 import { api } from "../auth/authManager";
 import { presenceUser } from "../presence/color";
+import type { ActivityStatus } from "../prefs";
 import { AttachmentSync } from "./attachments";
 import { decideSeed } from "./startup";
 import { DocSync, type SyncStatus } from "./syncManager";
@@ -44,6 +45,8 @@ export class SyncManager {
   private currentLocalAwareness: Awareness | null = null;
   private enabled = false;
   private presence: { id: string; name: string } | null = null;
+  /** The local user's chosen activity status, broadcast via awareness. */
+  private status: ActivityStatus = "online";
   private onStatus?: (status: SyncStatus) => void;
   private attachments: AttachmentSync | null = null;
 
@@ -246,11 +249,21 @@ export class SyncManager {
     this.docStore?.setSuppressedDoc(null);
   }
 
+  /**
+   * Update the broadcast activity status and re-publish it on any live
+   * awareness immediately, so teammates viewing the same note see the change.
+   */
+  setPresenceStatus(status: ActivityStatus): void {
+    this.status = status;
+    if (this.current) this.applyPresence(this.current.awareness);
+    if (this.currentLocalAwareness) this.applyPresence(this.currentLocalAwareness);
+  }
+
   private applyPresence(awareness: Awareness): void {
     if (!this.presence) return;
     awareness.setLocalStateField(
       "user",
-      presenceUser(this.presence.id, this.presence.name),
+      presenceUser(this.presence.id, this.presence.name, this.status),
     );
   }
 }

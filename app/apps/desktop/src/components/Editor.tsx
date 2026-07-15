@@ -405,7 +405,7 @@ export function Editor() {
           // Only fresh pings ring — stale awareness replays stay silent.
           if (seenPingsRef.current.has(key) || Date.now() - ping.at > 10_000) return;
           seenPingsRef.current.add(key);
-          playPingSound();
+          if (useStore.getState().mentionSound) playPingSound();
           setPingFrom(ping.name ?? "Someone");
           window.setTimeout(() => setPingFrom(null), 4000);
         });

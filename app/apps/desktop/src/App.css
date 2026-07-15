@@ -2466,3 +2466,99 @@ button.secondary:disabled {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---- Account settings (profile, status, notifications) ---- */
+.account-profile,
+.connection-tab,
+.status-tab,
+.about-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.account-profile .field,
+.connection-tab .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.field-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.field-hint {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  font-weight: 400;
+  margin-top: 2px;
+}
+.settings-page input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+}
+.profile-hero .avatar {
+  width: 56px;
+  height: 56px;
+  font-size: var(--fs-md);
+}
+.profile-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.profile-hero-meta strong {
+  font-size: var(--fs-md);
+}
+
+/* Activity status options */
+.status-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.status-tab .menu-item-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.status-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+}
+.status-dot.online {
+  background: #22c55e;
+}
+.status-dot.away {
+  background: #f59e0b;
+}
+.status-dot.busy {
+  background: var(--danger);
+}
+.status-dot.invisible {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--text-tertiary);
+}
+
+/* Notification toggle row */
+.toggle-row {
+  cursor: pointer;
+}
+.toggle-row input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  cursor: pointer;
+}

@@ -285,6 +285,16 @@ export class ApiClient {
     }
   }
 
+  /**
+   * Update the signed-in user's profile. Better Auth stores `name` and `image`
+   * (avatar URL) on the user, so these follow the account across devices and
+   * every workspace. Callers re-fetch the session afterward to pick up the
+   * updated user object.
+   */
+  async updateUser(input: { name?: string; image?: string | null }): Promise<void> {
+    await this.request<unknown>("POST", "/api/auth/update-user", { body: input });
+  }
+
   // ---- Google sign-in (social, via desktop loopback) ----------------------
 
   /** Which sign-in methods the server offers (Google is config-gated). */
