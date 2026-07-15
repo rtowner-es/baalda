@@ -19,6 +19,7 @@ import {
 import { authManager } from "./lib/auth/authManager";
 import { syncManager } from "./lib/sync/docSession";
 import type { SyncStatus } from "./lib/sync/syncManager";
+import { seedWelcomeContent, vaultIsEmpty, WELCOME_NOTE_PATH } from "./lib/vault/seed";
 
 export interface OpenNote {
   path: string;
@@ -77,6 +78,10 @@ interface AppStore {
   setItemOrder: (order: ItemOrder) => void;
   refreshTree: () => Promise<void>;
   refreshTitles: () => Promise<void>;
+  /** First-run seeding for a local (not-yet-synced) empty vault. */
+  seedLocalVaultIfEmpty: () => Promise<void>;
+  /** Open the root Welcome note if it exists and nothing else is open. */
+  openWelcomeIfPresent: () => Promise<void>;
 
   openNoteByPath: (path: string) => Promise<void>;
   refreshBacklinks: () => Promise<void>;
@@ -86,6 +91,7 @@ interface AppStore {
   // Auth actions
   initAuth: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   setServerUrl: (url: string) => Promise<void>;
@@ -280,6 +286,28 @@ export const useStore = create<AppStore>((set, get) => ({
     set({ titles });
   },
 
+  seedLocalVaultIfEmpty: async () => {
+    // First-run welcome content for an empty, local-only vault (opened while
+    // signed out, or a folder opened directly without sync). When signed in,
+    // the sync reconcile seeds instead — so the notes register on the server —
+    // hence the syncEnabled guard here to avoid seeding twice.
+    if (get().syncEnabled) return;
+    const tree = get().tree;
+    if (!tree || !vaultIsEmpty(tree)) return;
+    const welcomePath = await seedWelcomeContent();
+    await get().refreshTree();
+    await get().refreshTitles();
+    if (welcomePath) await get().openNoteByPath(welcomePath);
+  },
+
+  openWelcomeIfPresent: async () => {
+    // Land a freshly signed-in user on the Welcome note — but never yank them
+    // away from a note they already have open.
+    if (get().openNote) return;
+    const hasWelcome = get().titles.some((t) => t.path === WELCOME_NOTE_PATH);
+    if (hasWelcome) await get().openNoteByPath(WELCOME_NOTE_PATH);
+  },
+
   openNoteByPath: async (path) => {
     const meta = await ipc.getNoteMeta(path);
     const title = meta?.title ?? path.split("/").pop() ?? path;
@@ -346,6 +374,24 @@ export const useStore = create<AppStore>((set, get) => ({
       if (session) {
         await get().refreshWorkspace();
         await get().enableSyncForVault();
+        await get().openWelcomeIfPresent();
+      }
+    } catch (e) {
+      set({ authError: errMsg(e) });
+      throw e;
+    }
+  },
+
+  signInWithGoogle: async () => {
+    set({ authError: null });
+    try {
+      await authManager.signInWithGoogle();
+      const session = await authManager.currentSession();
+      set({ session, authStatus: session ? "signed-in" : "signed-out" });
+      if (session) {
+        await get().refreshWorkspace();
+        await get().enableSyncForVault();
+        await get().openWelcomeIfPresent();
       }
     } catch (e) {
       set({ authError: errMsg(e) });
@@ -681,6 +727,11 @@ export const useStore = create<AppStore>((set, get) => ({
       await get().refreshTree();
       await get().refreshTitles();
       await get().refreshLocks();
+      // A brand-new workspace was just seeded with welcome content — greet the
+      // user with the welcome note if nothing else is open.
+      if (result.seeded && !get().openNote) {
+        await get().openNoteByPath(WELCOME_NOTE_PATH);
+      }
     } else {
       set({ locks: [] });
       if (result.reason) console.warn("[sync] not enabled:", result.reason);
