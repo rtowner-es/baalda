@@ -123,25 +123,24 @@ export class VaultRegistry {
   ): Promise<{ seeded: boolean }> {
     const cfg = await this.loadConfig();
 
-    // 1. Ensure a server vault. Prefer the one recorded in config; verify it
-    //    still exists; otherwise create a fresh one.
+    // 1. Ensure a server vault — resolved by ID, never by name (names collide
+    //    and vary per device; the workspace's org id is the identity).
+    //    Precedence:
+    //      a. the vault id recorded in .context/config.json, IF it still exists
+    //         in THIS workspace (a stale or cross-workspace id is discarded);
+    //      b. the workspace's oldest existing vault (server lists created_at
+    //         ASC), so every device deterministically adopts the same one —
+    //         matching by folder name here used to fork a second, empty vault
+    //         (and 403 for plain members, who can't create vaults), which is
+    //         why a freshly-joined device saw an empty workspace;
+    //      c. create one (owner/admin bootstrapping a brand-new workspace).
+    const vaults = await this.api.listVaults();
+    const inOrg = vaults.filter((v) => vaultOrgId(v) === input.organizationId);
     let vaultId = cfg.serverVaultId ?? null;
-    if (vaultId) {
-      const vaults = await this.api.listVaults();
-      if (!vaults.some((v) => v.id === vaultId)) vaultId = null;
-    }
+    if (vaultId && !inOrg.some((v) => v.id === vaultId)) vaultId = null;
     if (!vaultId) {
-      // Adopt the workspace's existing vault: exact name match if there is one,
-      // otherwise the workspace's first (oldest) vault. A joining member's local
-      // folder name rarely matches the server vault's name — requiring a name
-      // match here used to fork a second, empty vault (and 403 for plain
-      // members, who can't create vaults), so a fresh device saw an empty
-      // workspace. Only create when the org has no vault at all.
-      const vaults = await this.api.listVaults();
-      const inOrg = vaults.filter((v) => vaultOrgId(v) === input.organizationId);
-      const existing = inOrg.find((v) => v.name === input.vaultName) ?? inOrg[0];
       const vault =
-        existing ??
+        inOrg[0] ??
         (await this.api.createVault({
           name: input.vaultName,
           organizationId: input.organizationId,
