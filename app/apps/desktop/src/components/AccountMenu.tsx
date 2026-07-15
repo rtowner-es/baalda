@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type McpToolInfo, type McpTokenRow } from "../lib/api";
 import { ITEM_COLORS, itemColorValue } from "../lib/appearance";
 import { authManager } from "../lib/auth/authManager";
@@ -1547,10 +1547,41 @@ function UpdatesTab() {
   );
 }
 
+const APPEARANCE_ICON = {
+  folder: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  ),
+  note: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+      <path d="M14 3v5h5" />
+    </svg>
+  ),
+};
+
 function AppearanceTab() {
   const itemColors = useStore((s) => s.itemColors);
+  const tree = useStore((s) => s.tree);
 
-  const colored = Object.entries(itemColors).sort(([a], [b]) => a.localeCompare(b));
+  // Flatten the vault into indented rows, same order as the sidebar.
+  const items = useMemo(() => {
+    const out: Array<{ path: string; name: string; depth: number; isDir: boolean }> = [];
+    const walk = (n: ipc.TreeNode, depth: number) => {
+      out.push({
+        path: n.path,
+        name: n.isDir ? n.name : n.name.replace(/\.(md|html?)$/i, ""),
+        depth,
+        isDir: n.isDir,
+      });
+      n.children?.forEach((c) => walk(c, depth + 1));
+    };
+    tree?.children?.forEach((c) => walk(c, 0));
+    return out;
+  }, [tree]);
+
+  const coloredCount = items.filter((i) => itemColors[i.path]).length;
 
   return (
     <>
@@ -1561,38 +1592,68 @@ function AppearanceTab() {
 
       <div className="subhead">Folder &amp; note colors</div>
       <div className="muted">
-        Pick a color from any folder or note's ⋯ menu in the sidebar. Colors are
-        saved with this device's vault settings.
-      </div>
-      <div className="palette-preview" aria-hidden="true">
-        {ITEM_COLORS.map((c) => (
-          <span key={c.id} className="swatch" style={{ backgroundColor: c.value }} title={c.label} />
-        ))}
+        Color-code your sidebar: click a swatch to tint that folder or note. Colors are saved
+        with this device's vault settings.
       </div>
 
-      {colored.length > 0 && (
+      {items.length === 0 ? (
+        <div className="muted perm-empty">Open a vault to color its folders and notes.</div>
+      ) : (
         <>
-          <div className="subhead">Colored items ({colored.length})</div>
-          <ul className="member-list">
-            {colored.map(([path, colorId]) => (
-              <li key={path}>
-                <span
-                  className="swatch"
-                  style={{ backgroundColor: itemColorValue(colorId) }}
-                  aria-hidden="true"
-                />
-                <span className="member-name" title={path}>
-                  {path.replace(/\.(md|html?)$/i, "")}
-                </span>
-                <button
-                  className="link-btn"
-                  onClick={() => useStore.getState().setItemColor(path, null)}
+          <ul className="appearance-list">
+            {items.map((item) => {
+              const active = itemColors[item.path];
+              return (
+                <li
+                  key={item.path}
+                  className="appearance-row"
+                  style={{ paddingLeft: `${12 + item.depth * 16}px` }}
                 >
-                  Clear
-                </button>
-              </li>
-            ))}
+                  <span
+                    className="appearance-glyph"
+                    style={{ color: itemColorValue(active) }}
+                    aria-hidden="true"
+                  >
+                    {item.isDir ? APPEARANCE_ICON.folder : APPEARANCE_ICON.note}
+                  </span>
+                  <span className="appearance-name" title={item.path}>
+                    {item.name}
+                  </span>
+                  <span className="appearance-swatches" role="radiogroup" aria-label={`Color for ${item.name}`}>
+                    <button
+                      type="button"
+                      className={`swatch clear${!active ? " on" : ""}`}
+                      title="Default"
+                      aria-label="Default color"
+                      onClick={() => useStore.getState().setItemColor(item.path, null)}
+                    />
+                    {ITEM_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`swatch${active === c.id ? " on" : ""}`}
+                        style={{ backgroundColor: c.value }}
+                        title={c.label}
+                        aria-label={c.label}
+                        onClick={() => useStore.getState().setItemColor(item.path, c.id)}
+                      />
+                    ))}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
+          {coloredCount > 0 && (
+            <button
+              className="link-btn"
+              onClick={() => {
+                const { itemColors: colors, setItemColor } = useStore.getState();
+                Object.keys(colors).forEach((path) => setItemColor(path, null));
+              }}
+            >
+              Clear all colors ({coloredCount})
+            </button>
+          )}
         </>
       )}
     </>
