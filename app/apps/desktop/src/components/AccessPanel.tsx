@@ -303,6 +303,9 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
 
   // Claude mirrors the viewing owner/admin's effective access via the MCP token.
   const myAccess = access?.find((m) => m.userId === session?.user.id)?.permission ?? "edit";
+  // Per-person controls only apply to members other than the owner (you can't
+  // lock yourself out). With just you here there's nothing to configure yet.
+  const otherMembers = (access ?? []).filter((m) => m.role !== "owner").length;
 
   return (
     <div className="access-panel">
@@ -487,6 +490,16 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
                       </div>
                     );
                   })}
+
+                  {otherMembers === 0 && (
+                    <p className="access-hint">
+                      You're the only member. Invite teammates in <strong>Members</strong>, then
+                      each one gets a per-person control here — <strong>Can edit</strong> or{" "}
+                      <strong>Can view (read-only)</strong> — so you can lock this{" "}
+                      {selected.kind === "folder" ? "folder" : "note"} for some people while others
+                      keep editing.
+                    </p>
+                  )}
                 </div>
               )}
             </>

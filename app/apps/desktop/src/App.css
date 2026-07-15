@@ -1715,7 +1715,7 @@ button.primary.hero:hover:not(:disabled) {
   display: flex;
   gap: var(--sp-6);
   width: 100%;
-  max-width: 880px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-8);
 }
@@ -1851,8 +1851,8 @@ button.primary.hero:hover:not(:disabled) {
 .access-master {
   background: var(--bg-subtle);
   border-radius: var(--radius-lg);
-  padding: var(--sp-3);
-  max-height: 264px;
+  padding: var(--sp-2);
+  max-height: 360px;
   overflow-y: auto;
 }
 .access-list {
@@ -1868,7 +1868,7 @@ button.primary.hero:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-2);
+  padding: 4px var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
@@ -1904,7 +1904,7 @@ button.primary.hero:hover:not(:disabled) {
 .access-rname {
   flex: 1;
   min-width: 0;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1946,8 +1946,8 @@ button.primary.hero:hover:not(:disabled) {
   display: inline-flex;
 }
 .access-av-wrap {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--radius-pill);
   overflow: hidden;
   display: inline-grid;
@@ -1962,8 +1962,8 @@ button.primary.hero:hover:not(:disabled) {
   box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .access-av-wrap .avatar {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
 }
 .access-av-wrap.locked {
   position: relative;
@@ -2159,6 +2159,19 @@ button.primary.hero:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+.access-hint {
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-3);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+.access-hint strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 .access-prow {
   display: flex;
