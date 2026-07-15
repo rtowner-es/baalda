@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { oAuthDiscoveryMetadata, oAuthProtectedResourceMetadata } from "better-auth/plugins";
 import { config } from "../config.js";
 import { auth } from "../auth/auth.js";
+import { oauthConnectRoutes } from "./routes/oauth-connect.js";
 import { blobRoutes } from "./routes/blobs.js";
 import { registryRoutes } from "./routes/registry.js";
 import { syncTokenRoutes } from "./routes/sync-token.js";
@@ -75,6 +77,20 @@ export function createApp(deps: AppDeps): Hono {
   );
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  // ── MCP OAuth discovery (RFC 8414 / RFC 9728) ─────────────────────────────
+  // These MUST sit at the origin root: our protected-resource metadata names
+  // the origin as the authorization server, so an MCP client (e.g. a Claude
+  // custom connector) fetches /.well-known/* from the origin, not /api/auth.
+  // The helpers proxy to the Better Auth `mcp` plugin's own endpoints.
+  app.get("/.well-known/oauth-authorization-server", (c) =>
+    oAuthDiscoveryMetadata(auth)(c.req.raw),
+  );
+  app.get("/.well-known/oauth-protected-resource", (c) =>
+    oAuthProtectedResourceMetadata(auth)(c.req.raw),
+  );
+  // The human-facing login + consent screens of that OAuth flow.
+  app.route("/", oauthConnectRoutes);
 
   // Better Auth owns everything under /api/auth (web-standard Request handler).
   app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));

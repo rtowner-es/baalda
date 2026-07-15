@@ -1,16 +1,26 @@
 import { Hono } from "hono";
 import { pool } from "../../db/pool.js";
+import { config } from "../../config.js";
 import { orgRole } from "../../permissions/lookup.js";
 import { getSession } from "../session.js";
 import type { DocWriter } from "../../mcp/doc-writer.js";
 import { handleMcpMessage, type JsonRpcRequest } from "../../mcp/protocol.js";
 import type { McpContext } from "../../mcp/service.js";
+import { resolveOAuthMcpAuth } from "../../mcp/oauth.js";
 import {
   createMcpToken,
   listMcpTokens,
   revokeMcpToken,
   verifyMcpToken,
 } from "../../mcp/tokens.js";
+
+/**
+ * Sent on every 401 from the MCP endpoint. Per the MCP auth spec (RFC 9728),
+ * this points OAuth-capable clients (e.g. a Claude custom connector) at our
+ * protected-resource metadata so they can discover the auth server and start
+ * the OAuth flow instead of expecting a hand-pasted token.
+ */
+const WWW_AUTHENTICATE = `Bearer resource_metadata="${config.betterAuthUrl}/.well-known/oauth-protected-resource"`;
 
 /**
  * The Model Context Protocol surface, part of the same server as everything
@@ -59,17 +69,26 @@ async function resolveActiveOrg(
 export function createMcpRoutes(deps: McpDeps): Hono {
   const app = new Hono();
 
-  // ── The MCP endpoint (token-authenticated) ────────────────────────────────
+  // ── The MCP endpoint (token- OR OAuth-authenticated) ──────────────────────
+  // Two ways in, both resolving to the SAME (user, workspace) McpAuth:
+  //   1. a minted `mcp_` token (Bearer header or ?key=) — desktop power users;
+  //   2. an OAuth 2.1 access token (Bearer header) from the custom-connector
+  //      flow — the workspace comes from the user's consent-screen choice.
   app.post("/mcp", async (c) => {
     const token = extractToken(c);
-    if (!token) {
-      c.header("WWW-Authenticate", "Bearer");
-      return c.json({ error: "MCP token required" }, 401);
-    }
-    const auth = await verifyMcpToken(token);
+    let auth = token ? await verifyMcpToken(token) : null;
+    if (!auth) auth = await resolveOAuthMcpAuth(c.req.raw.headers);
     if (!auth) {
-      c.header("WWW-Authenticate", "Bearer");
-      return c.json({ error: "Invalid or revoked MCP token" }, 401);
+      c.header("WWW-Authenticate", WWW_AUTHENTICATE);
+      c.header("Access-Control-Expose-Headers", "WWW-Authenticate");
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: { code: -32001, message: "Unauthorized: authentication required" },
+        },
+        401,
+      );
     }
 
     let body: unknown;

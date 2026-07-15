@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { bearer, organization } from "better-auth/plugins";
+import { bearer, mcp, organization } from "better-auth/plugins";
 import { Algorithm, hash as argonHash, verify as argonVerify } from "@node-rs/argon2";
 import pg from "pg";
 import { config } from "../config.js";
@@ -89,6 +89,28 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
       invitationExpiresIn: config.invitationExpiresInSeconds, // 48h
+    }),
+    // OAuth 2.1 authorization server for MCP clients (spec: MCP integration).
+    // Lets a Claude "custom connector" run the standard discovery → dynamic
+    // client registration → PKCE authorize/consent → token flow against an
+    // EXISTING Baalda account. The issued access token carries the user id, so
+    // POST /api/mcp resolves it to that user + the workspace they picked on the
+    // consent screen and enforces the very same per-file ACL an mcp_ token does.
+    //
+    // loginPage/consentPage are branded HTML we serve ourselves (see
+    // routes/oauth-connect.ts) so the whole flow works on a headless server
+    // (api.baalda.com) and any self-hoster, with no separate web frontend.
+    mcp({
+      // Canonical resource id advertised in the protected-resource metadata:
+      // the MCP endpoint clients actually POST to.
+      resource: `${config.betterAuthUrl}/api/mcp`,
+      loginPage: `${config.betterAuthUrl}/oauth/login`,
+      oidcConfig: {
+        // loginPage is duplicated here only to satisfy OIDCOptions' type; the
+        // mcp plugin overrides it with the top-level `loginPage` above.
+        loginPage: `${config.betterAuthUrl}/oauth/login`,
+        consentPage: `${config.betterAuthUrl}/oauth/consent`,
+      },
     }),
   ],
 });
