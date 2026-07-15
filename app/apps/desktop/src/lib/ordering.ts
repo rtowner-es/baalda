@@ -9,28 +9,9 @@ import type { TreeNode } from "./ipc";
 export type ItemOrder = Record<string, string[]>;
 
 const STORE_PREFIX = "context.itemOrder:";
-const LEGACY_STORE_PREFIX = "opencontext.itemOrder:";
-
-/** One-time migration of legacy-prefixed keys to the neutral prefix. */
-function migrateItemOrderKeys(): void {
-  try {
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith(LEGACY_STORE_PREFIX)) continue;
-      const suffix = key.slice(LEGACY_STORE_PREFIX.length);
-      const newKey = STORE_PREFIX + suffix;
-      if (localStorage.getItem(newKey) === null) {
-        localStorage.setItem(newKey, localStorage.getItem(key) ?? "{}");
-      }
-      localStorage.removeItem(key);
-    }
-  } catch {
-    /* quota/unavailable — order is a convenience only */
-  }
-}
 
 export function readItemOrder(vaultPath: string | undefined): ItemOrder {
   if (!vaultPath) return {};
-  migrateItemOrderKeys();
   try {
     return JSON.parse(localStorage.getItem(STORE_PREFIX + vaultPath) ?? "{}") as ItemOrder;
   } catch {

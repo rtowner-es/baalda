@@ -109,7 +109,7 @@ Generate a real `JWT_SECRET` for anything beyond local testing:
 The repo ships a checked-in `railway.json` at the repo root, so Railway needs
 almost no manual configuration:
 
-1. Create a new Railway project and deploy from this GitHub repo. Railway
+1. Create a new Railway project and deploy from this repo. Railway
    reads `railway.json` and builds `app/apps/server/Dockerfile` with the repo
    root as build context.
 2. Add a **Postgres** database service to the project (Railway's own Postgres
@@ -134,7 +134,7 @@ Settings.
 Once this is stable, the maintainer can publish a **Railway template** from
 the dashboard (Project → Settings → generate template) to enable a true
 one-click "Deploy on Railway" button in the README. Until then, deploying
-from the GitHub repo as above works the same way, just with a few manual
+from the git repo as above works the same way, just with a few manual
 clicks instead of one.
 
 ## Environment variables

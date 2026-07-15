@@ -145,32 +145,9 @@ function slugify(name: string): string {
 // Each workspace has its own notes, so remember which local folder was last
 // used with each workspace and swap to it on switch.
 const ORG_VAULTS_KEY = "context.orgVaults";
-const LEGACY_ORG_VAULTS_KEY = "opencontext.orgVaults";
-
-/**
- * One-time migration from the old key. The managed root folder was renamed
- * on disk (~/OpenContext → ~/Baalda), so remembered paths pointing at the
- * old root are rewritten to match.
- */
-function migrateOrgVaults(): void {
-  try {
-    if (localStorage.getItem(ORG_VAULTS_KEY) !== null) return;
-    const legacy = localStorage.getItem(LEGACY_ORG_VAULTS_KEY);
-    if (legacy === null) return;
-    const map = JSON.parse(legacy) as Record<string, string>;
-    for (const [id, p] of Object.entries(map)) {
-      map[id] = p.replace(/\/OpenContext(\/|$)/, "/Baalda$1");
-    }
-    localStorage.setItem(ORG_VAULTS_KEY, JSON.stringify(map));
-    localStorage.removeItem(LEGACY_ORG_VAULTS_KEY);
-  } catch {
-    /* quota/unavailable — mapping is a convenience only */
-  }
-}
 
 /** Persisted { orgId → absolute local folder path } binding, one folder per workspace. */
 export function readOrgVaults(): Record<string, string> {
-  migrateOrgVaults();
   try {
     return JSON.parse(localStorage.getItem(ORG_VAULTS_KEY) ?? "{}") as Record<string, string>;
   } catch {

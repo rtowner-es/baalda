@@ -21,9 +21,9 @@ Three pieces; this open-source repo holds the first two.
   The managed option runs this **same server code**, publicly reachable at
   `https://api.baalda.com`; users choose an instance via the server URL in Settings. There is
   no separate "managed edition" of the server. Self-host/deploy guide: `docs/DEPLOY.md`.
-- **Website + managed service** — a separate **private** repo (`baalda-web`), the marketing and
-  managed-service site at [baalda.com](https://baalda.com). The README links baalda.com as the
-  managed option, and that is the only mention this repo gets.
+- **Website + managed service** — lives outside this public repo. The README links
+  [baalda.com](https://baalda.com) as the managed option, and that is the only mention this
+  repo gets.
 
 **Boundary rule:** this repo is public. Never commit anything about how *our* managed instance
 is operated — hosting/provider, deploy config for our instance, domains/DNS, dashboards,

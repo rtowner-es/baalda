@@ -66,12 +66,11 @@ export const SETTING_RANGES = {
 
 // Bumped v1 → v2 so the new physics defaults take effect over any saved values.
 export const SETTINGS_STORAGE_KEY = "context.graph.settings.v2";
-const LEGACY_SETTINGS_STORAGE_KEY = "opencontext.graph.settings.v2";
 
 /** Load persisted settings, merged over defaults (tolerant of missing/old keys). */
 export function loadSettings(): GraphSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<GraphSettings>;
     return { ...DEFAULT_SETTINGS, ...parsed };
@@ -84,7 +83,6 @@ export function loadSettings(): GraphSettings {
 export function saveSettings(settings: GraphSettings): void {
   try {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-    localStorage.removeItem(LEGACY_SETTINGS_STORAGE_KEY);
   } catch {
     /* ignore */
   }

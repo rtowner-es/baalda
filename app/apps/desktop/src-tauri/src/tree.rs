@@ -103,8 +103,6 @@ mod tests {
         let root = tmp.path();
         fs::create_dir_all(root.join(".context")).unwrap();
         fs::write(root.join(".context/index.sqlite"), b"x").unwrap();
-        fs::create_dir_all(root.join(".opencontext")).unwrap();
-        fs::write(root.join(".opencontext/index.sqlite"), b"x").unwrap();
         fs::create_dir_all(root.join(".git")).unwrap();
         fs::write(root.join(".git/config"), b"x").unwrap();
         fs::create_dir_all(root.join("Notes/Sub")).unwrap();
@@ -114,7 +112,7 @@ mod tests {
 
         let tree = list_tree(root).unwrap();
         let children = tree.children.unwrap();
-        // Only "Notes" dir should appear (not .context, .opencontext, .git, or ignored.txt).
+        // Only "Notes" dir should appear (not .context, .git, or ignored.txt).
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].name, "Notes");
 

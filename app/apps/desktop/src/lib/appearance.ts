@@ -25,28 +25,9 @@ export function itemColorValue(id: string | undefined): string | undefined {
 }
 
 const STORE_PREFIX = "context.itemColors:";
-const LEGACY_STORE_PREFIX = "opencontext.itemColors:";
-
-/** One-time migration of legacy-prefixed keys to the neutral prefix. */
-function migrateItemColorKeys(): void {
-  try {
-    for (const key of Object.keys(localStorage)) {
-      if (!key.startsWith(LEGACY_STORE_PREFIX)) continue;
-      const suffix = key.slice(LEGACY_STORE_PREFIX.length);
-      const newKey = STORE_PREFIX + suffix;
-      if (localStorage.getItem(newKey) === null) {
-        localStorage.setItem(newKey, localStorage.getItem(key) ?? "{}");
-      }
-      localStorage.removeItem(key);
-    }
-  } catch {
-    /* quota/unavailable — colors are a convenience only */
-  }
-}
 
 export function readItemColors(vaultPath: string | undefined): Record<string, string> {
   if (!vaultPath) return {};
-  migrateItemColorKeys();
   try {
     return JSON.parse(localStorage.getItem(STORE_PREFIX + vaultPath) ?? "{}") as Record<
       string,

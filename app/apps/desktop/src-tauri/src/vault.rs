@@ -5,10 +5,9 @@ use crate::error::{AppError, AppResult};
 use std::path::{Component, Path, PathBuf};
 
 /// Names that are never walked into the note pipeline (spec 02 §2 hard rule).
-/// Both `.context` (current) and `.opencontext` (pre-rebrand, may still exist in
-/// vaults synced from an older client) are ignored so neither ever forks into
+/// `.context` holds the derived index and CRDT store; it must never fork into
 /// the note pipeline.
-pub const IGNORED_DIRS: &[&str] = &[".context", ".opencontext", ".git"];
+pub const IGNORED_DIRS: &[&str] = &[".context", ".git"];
 
 /// True if a directory/file name should be skipped by the tree walk & watcher.
 pub fn is_ignored_name(name: &str) -> bool {
@@ -109,12 +108,10 @@ mod tests {
     #[test]
     fn ignores_dotfolders_and_context_dirs() {
         assert!(is_ignored_name(".context"));
-        assert!(is_ignored_name(".opencontext"));
         assert!(is_ignored_name(".git"));
         assert!(is_ignored_name(".hidden"));
         assert!(!is_ignored_name("Notes"));
         assert!(rel_path_is_ignored(".context/index.sqlite"));
-        assert!(rel_path_is_ignored(".opencontext/index.sqlite"));
         assert!(rel_path_is_ignored("a/.git/config"));
         assert!(!rel_path_is_ignored("a/b/note.md"));
     }

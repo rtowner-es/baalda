@@ -84,20 +84,6 @@ fn vault_info(path: &Path) -> VaultInfo {
     }
 }
 
-/// One-time migration for the rebrand: earlier builds kept vault state under
-/// `.opencontext/`. If that dir exists and `.context/` does not, rename it in
-/// place before the index opens — same contents (index.sqlite, config.json),
-/// just the new name. Best-effort, non-fatal on failure.
-fn migrate_vault_dir(vault: &Path) {
-    let old = vault.join(".opencontext");
-    let new = vault.join(".context");
-    if old.is_dir() && !new.exists() {
-        if let Err(e) = std::fs::rename(&old, &new) {
-            eprintln!("[vault] .opencontext -> .context migration failed: {e}");
-        }
-    }
-}
-
 /// Open a vault: build/refresh its index, start the watcher, remember it, and
 /// emit `vault-opened`. Shared by `pick_vault` and `open_vault`.
 fn open_vault_inner(app: &AppHandle, state: &State<AppState>, path: PathBuf) -> AppResult<VaultInfo> {
@@ -116,7 +102,6 @@ fn open_vault_inner(app: &AppHandle, state: &State<AppState>, path: PathBuf) -> 
     // stream vault files (e.g. `<img src>` in notes) via convertFileSrc.
     let _ = app.asset_protocol_scope().allow_directory(&path, true);
 
-    migrate_vault_dir(&path);
     let index = Index::open(&path)?;
     index.rebuild(&path)?;
     let index = Arc::new(Mutex::new(index));
@@ -188,11 +173,6 @@ pub fn get_server_url(app: AppHandle) -> AppResult<Option<String>> {
 // workspace before the root existed keep their original location — the root is
 // only where *new* workspace folders are created.
 
-/// Legacy managed-root folder name under the user's home directory. Kept only
-/// for the one-time `OpenContext -> Baalda` rebrand migration below; new installs
-/// use `DEFAULT_ROOT_DIR_NAME` under Documents instead.
-const MANAGED_ROOT_DIR_NAME: &str = "Baalda";
-
 /// User-visible name of the default managed-root folder. Layer-1 brand surface
 /// (spec: rebrand policy) — the one place the default root folder name is set.
 const DEFAULT_ROOT_DIR_NAME: &str = "Baalda Vaults";
@@ -208,60 +188,11 @@ fn default_workspace_root(app: &AppHandle) -> AppResult<PathBuf> {
     Ok(home.join("Documents").join(DEFAULT_ROOT_DIR_NAME))
 }
 
-/// One-time migration for the rebrand: earlier builds managed `<home>/OpenContext`.
-/// If that folder exists and `<home>/Baalda` does not, rename it in place, then
-/// repoint a `current` symlink still pointing inside the old root, and fix up a
-/// persisted config value that still names the old path. Best-effort — every
-/// failure is logged and non-fatal, matching `repoint_current` below.
-fn migrate_managed_root(app: &AppHandle, cfg: &mut AppConfig) {
-    let Ok(home) = app.path().home_dir() else {
-        return;
-    };
-    let old_root = home.join("OpenContext");
-    let new_root = home.join(MANAGED_ROOT_DIR_NAME);
-
-    if old_root.is_dir() && !new_root.exists() {
-        match std::fs::rename(&old_root, &new_root) {
-            Ok(()) => {
-                // If `current` inside the (now-moved) root still points somewhere
-                // under the old root path, recreate it pointing at the new root.
-                let link = new_root.join("current");
-                if let Ok(target) = std::fs::read_link(&link) {
-                    if let Ok(suffix) = target.strip_prefix(&old_root) {
-                        let new_target = new_root.join(suffix);
-                        let _ = std::fs::remove_file(&link);
-                        #[cfg(unix)]
-                        if let Err(e) = std::os::unix::fs::symlink(&new_target, &link) {
-                            eprintln!("[workspace] migration symlink repoint failed: {e}");
-                        }
-                        #[cfg(windows)]
-                        if let Err(e) = std::os::windows::fs::symlink_dir(&new_target, &link) {
-                            eprintln!("[workspace] migration symlink_dir repoint failed: {e}");
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("[workspace] managed-root migration (OpenContext -> Baalda) failed: {e}");
-            }
-        }
-    }
-
-    // A persisted config may still name the old path even if the folder itself
-    // was already renamed (or just got renamed above).
-    if let Some(r) = &cfg.workspace_root {
-        if PathBuf::from(r) == old_root && new_root.exists() {
-            cfg.workspace_root = Some(new_root.to_string_lossy().to_string());
-        }
-    }
-}
-
 /// The effective workspace root, auto-initialized to the default and persisted
 /// on first read so the rest of the app can rely on it always existing.
 #[tauri::command]
 pub fn get_workspace_root(app: AppHandle) -> AppResult<String> {
     let mut cfg = read_config(&app);
-    migrate_managed_root(&app, &mut cfg);
     let root = match cfg.workspace_root.clone() {
         Some(r) => PathBuf::from(r),
         None => {
