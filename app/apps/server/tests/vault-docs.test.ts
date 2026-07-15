@@ -20,6 +20,20 @@ import {
 // says the user has some (non-none) access. This cross-check is the guardrail
 // against the set-based query drifting from the resolver.
 
+async function seedWorkspaceShare(
+  workspaceId: string,
+  principalType: "org" | "user",
+  principalId: string,
+  permission: "view" | "edit",
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO shares
+       (id, workspace_id, resource_type, resource_id, principal_type, principal_id, permission)
+     VALUES ($1, $2, 'workspace', $2, $3, $4, $5)`,
+    [randomUUID(), workspaceId, principalType, principalId, permission],
+  );
+}
+
 async function seedLock(
   workspaceId: string,
   resourceType: "folder" | "file",
@@ -93,6 +107,39 @@ describe("listReadableDocsInVault agrees with effectivePermission (spec 05 §3.1
     expect(await listReadableDocsInVault(bob, vault)).toEqual(new Set([p1]));
     expect(await listReadableDocsInVault(carol, vault)).toEqual(new Set());
     expect(await listReadableDocsInVault(dave, vault)).toEqual(new Set());
+  });
+
+  it("honors workspace-scoped grants (the Open/Read-only default and per-user)", async () => {
+    const org = await seedOrg("Gamma", "gamma-vd");
+    const owner = await seedUser("o3@g.com");
+    const member = await seedUser("m3@g.com");
+    const guest = await seedUser("g3@g.com"); // per-user workspace grant, not a member
+    const outsider = await seedUser("x3@g.com"); // nothing at all
+    await seedMember(org, owner, "owner");
+    await seedMember(org, member, "member");
+
+    const vault = await seedVault(org);
+    const folder = await seedFolder(vault, null, "Team", "Team");
+    const rootNote = await seedNote(vault, null, "root.md"); // folderless — only a
+    const teamNote = await seedNote(vault, folder, "Team/t.md"); // workspace grant reaches it
+    const all = [rootNote, teamNote];
+
+    // The org-wide "Open" grant every new workspace gets (registry POST /vaults).
+    await seedWorkspaceShare(org, "org", org, "edit");
+    // A per-user workspace grant for someone who is NOT a member.
+    await seedWorkspaceShare(org, "user", guest, "view");
+
+    for (const u of [owner, member, guest, outsider]) {
+      await assertAgrees(u, vault, all);
+    }
+    // A plain member reads EVERYTHING via the org-wide grant — this is what feeds
+    // a freshly-joined member's background vault sync (regression: this set used
+    // to come back empty, so new members saw blank notes until they opened each).
+    expect(await listReadableDocsInVault(member, vault)).toEqual(new Set(all));
+    // Per-user workspace grant works even without membership…
+    expect(await listReadableDocsInVault(guest, vault)).toEqual(new Set(all));
+    // …but the org-wide grant never leaks to outsiders.
+    expect(await listReadableDocsInVault(outsider, vault)).toEqual(new Set());
   });
 
   it("excludes soft-deleted notes and returns empty for a non-member", async () => {

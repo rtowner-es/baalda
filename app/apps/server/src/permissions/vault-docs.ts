@@ -11,12 +11,13 @@ type Queryable = Pick<pg.Pool, "query">;
  *
  * Mirrors the resolver exactly:
  *   - workspace owner/admin  -> every (non-deleted) note + file in the vault;
- *   - otherwise              -> docs reachable via a **user** share (view/edit)
+ *   - a workspace-scoped view/edit grant (org-wide "Open"/"Read-only" for
+ *     members, or per-user) -> likewise every doc in the vault;
+ *   - otherwise             -> docs reachable via a **user** share (view/edit)
  *     on the doc itself or any ancestor folder (folder grants inherit down).
  *
  * `locked` is a deny-overlay that only caps edit->view; it never grants read, so
- * it's absent here. `org`-principal grants aren't counted (the resolver ignores
- * them except for locks) — a plain member with no share reads nothing.
+ * it's absent here.
  *
  * Read = view OR edit, so the channel streams content to view-only grantees too.
  */
@@ -36,7 +37,24 @@ export async function listReadableDocsInVault(
   const row = org.rows[0];
   if (!row) return new Set(); // unknown vault
 
-  if (row.role === "owner" || row.role === "admin") {
+  let vaultWide = row.role === "owner" || row.role === "admin";
+  if (!vaultWide) {
+    // Workspace-scoped grant (spec 04 "Access" model): the org-wide Open/
+    // Read-only default (members only), or a per-user workspace grant.
+    const orgClause =
+      row.role !== null ? "principal_type = 'org' OR" : "";
+    const grant = await db.query(
+      `SELECT 1 FROM shares
+        WHERE resource_type = 'workspace' AND resource_id = $1
+          AND permission IN ('view', 'edit')
+          AND (${orgClause} (principal_type = 'user' AND principal_id = $2))
+        LIMIT 1`,
+      [row.organization_id, userId],
+    );
+    vaultWide = (grant.rowCount ?? 0) > 0;
+  }
+
+  if (vaultWide) {
     const { rows } = await db.query<{ id: string }>(
       `SELECT id FROM notes WHERE vault_id = $1 AND deleted_at IS NULL
        UNION
