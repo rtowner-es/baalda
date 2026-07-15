@@ -36,6 +36,16 @@ registryRoutes.post("/vaults", async (c) => {
     "INSERT INTO vaults (id, organization_id, name) VALUES ($1, $2, $3)",
     [id, organizationId, name],
   );
+  // New workspaces default to "Open": an org-wide edit grant so members can
+  // read/write shared content the moment they join. Owner can switch to
+  // Read-only or Private later (Access panel). Idempotent per workspace.
+  await pool.query(
+    `INSERT INTO shares
+       (id, workspace_id, resource_type, resource_id, principal_type, principal_id, permission, created_by)
+     VALUES ($1, $2, 'workspace', $2, 'org', $2, 'edit', $3)
+     ON CONFLICT (resource_type, resource_id, principal_type, principal_id) DO NOTHING`,
+    [randomUUID(), organizationId, session.userId],
+  );
   return c.json({ id, organizationId, name }, 201);
 });
 

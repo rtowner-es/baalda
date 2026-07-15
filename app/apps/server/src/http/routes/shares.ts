@@ -32,12 +32,14 @@ export function createShareRoutes(deps: ShareDeps): Hono {
 
   async function canManage(
     userId: string,
-    resourceType: "folder" | "file",
+    resourceType: "folder" | "file" | "workspace",
     resourceId: string,
   ): Promise<{
     ok: boolean;
     organizationId?: string;
-    vaultId?: string;
+    /** Vaults whose subscribers should re-evaluate on an ACL change. A folder/
+     *  file touches one vault; a workspace grant touches all of the org's. */
+    vaultIds?: string[];
     status?: number;
     error?: string;
   }> {
@@ -45,11 +47,25 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     if (!info) return { ok: false, status: 404, error: "Unknown resource" };
     const role = await orgRole(info.organizationId, userId);
     const isAdmin = role === "owner" || role === "admin";
-    const isCreator = info.createdBy !== null && info.createdBy === userId;
+    // Workspace posture (Open/Read-only/Private) is an owner/admin decision;
+    // the per-resource "creator can manage" escape hatch doesn't apply.
+    const isCreator =
+      resourceType !== "workspace" &&
+      info.createdBy !== null &&
+      info.createdBy === userId;
     if (!isAdmin && !isCreator) {
       return { ok: false, status: 403, error: "Not allowed to manage shares here" };
     }
-    return { ok: true, organizationId: info.organizationId, vaultId: info.vaultId };
+    const vaultIds =
+      resourceType === "workspace"
+        ? (
+            await pool.query<{ id: string }>(
+              "SELECT id FROM vaults WHERE organization_id = $1",
+              [info.organizationId],
+            )
+          ).rows.map((r) => r.id)
+        : [info.vaultId];
+    return { ok: true, organizationId: info.organizationId, vaultIds };
   }
 
   // Create or update a share (upsert on the unique resource+principal key).
@@ -66,7 +82,7 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     const principalType = body.principalType ?? "user";
     const permission = body.permission;
     if (
-      (resourceType !== "folder" && resourceType !== "file") ||
+      (resourceType !== "folder" && resourceType !== "file" && resourceType !== "workspace") ||
       typeof resourceId !== "string" ||
       (principalType !== "user" && principalType !== "org") ||
       (permission !== "view" && permission !== "edit" && permission !== "locked")
@@ -74,13 +90,15 @@ export function createShareRoutes(deps: ShareDeps): Hono {
       return c.json(
         {
           error:
-            "resourceType(folder|file), resourceId, principalType(user|org), permission(view|edit|locked) required",
+            "resourceType(folder|file|workspace), resourceId, principalType(user|org), permission(view|edit|locked) required",
         },
         400,
       );
     }
-    // Org-wide rows only make sense as locks; plain grants stay per-user.
-    if (principalType === "org" && permission !== "locked") {
+    // On a folder/file, org-wide rows only make sense as locks; plain grants
+    // stay per-user. A workspace resource is the exception: an org-wide
+    // edit/view grant IS the "Open"/"Read-only" workspace posture.
+    if (principalType === "org" && permission !== "locked" && resourceType !== "workspace") {
       return c.json({ error: "org-wide shares must be locks (permission=locked)" }, 400);
     }
 
@@ -123,7 +141,7 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     }
 
     // A new grant can expand a user's readable set — tell background subscribers.
-    if (gate.vaultId) deps.onAclChanged?.(gate.vaultId);
+    for (const v of gate.vaultIds ?? []) deps.onAclChanged?.(v);
 
     return c.json(
       { id: rows[0].id, resourceType, resourceId, principalType, principalId, permission },
@@ -170,7 +188,10 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     if (!session) return c.json({ error: "Authentication required" }, 401);
     const resourceType = c.req.query("resourceType");
     const resourceId = c.req.query("resourceId");
-    if ((resourceType !== "folder" && resourceType !== "file") || !resourceId) {
+    if (
+      (resourceType !== "folder" && resourceType !== "file" && resourceType !== "workspace") ||
+      !resourceId
+    ) {
       return c.json({ error: "resourceType and resourceId query params required" }, 400);
     }
     const gate = await canManage(session.userId, resourceType, resourceId);
@@ -237,7 +258,7 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     const shareId = c.req.param("id");
 
     const { rows } = await pool.query<{
-      resource_type: "folder" | "file";
+      resource_type: "folder" | "file" | "workspace";
       resource_id: string;
     }>("SELECT resource_type, resource_id FROM shares WHERE id = $1", [shareId]);
     const share = rows[0];
@@ -255,7 +276,7 @@ export function createShareRoutes(deps: ShareDeps): Hono {
     }
     // Revoking a grant can shrink a user's readable set — background subscribers
     // re-evaluate and drop the now-inaccessible docs.
-    if (gate.vaultId) deps.onAclChanged?.(gate.vaultId);
+    for (const v of gate.vaultIds ?? []) deps.onAclChanged?.(v);
     return c.json({ revoked: shareId, disconnectedDocs: docs.length });
   });
 

@@ -89,3 +89,42 @@ export async function seedShare(
   );
   return id;
 }
+
+/** Org-wide workspace grant — the "Open" (edit) / "Read-only" (view) posture. */
+export async function seedWorkspaceGrant(
+  organizationId: string,
+  permission: "view" | "edit",
+): Promise<string> {
+  const id = randomUUID();
+  await pool.query(
+    `INSERT INTO shares
+       (id, workspace_id, resource_type, resource_id, principal_type, principal_id, permission)
+     VALUES ($1, $2, 'workspace', $2, 'org', $2, $3)`,
+    [id, organizationId, permission],
+  );
+  return id;
+}
+
+/** A lock row (DENY overlay) on a folder/file, for a user or the whole org. */
+export async function seedLock(
+  organizationId: string,
+  resourceType: "folder" | "file",
+  resourceId: string,
+  principal: { type: "user"; id: string } | { type: "org" },
+): Promise<string> {
+  const id = randomUUID();
+  await pool.query(
+    `INSERT INTO shares
+       (id, workspace_id, resource_type, resource_id, principal_type, principal_id, permission)
+     VALUES ($1, $2, $3, $4, $5, $6, 'locked')`,
+    [
+      id,
+      organizationId,
+      resourceType,
+      resourceId,
+      principal.type,
+      principal.type === "user" ? principal.id : organizationId,
+    ],
+  );
+  return id;
+}

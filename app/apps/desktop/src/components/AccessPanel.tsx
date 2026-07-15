@@ -23,7 +23,13 @@ import { Avatar } from "./Identity";
  */
 
 type Mode = "open" | "readonly" | "private";
-type MemberChoice = "default" | "view" | "edit" | "readonly";
+// Per-member states are the two the workspace model actually supports on top of
+// the Open baseline: "edit" (writable) and "view" (read-only). Because grants
+// only ever RAISE permission and a member already has edit under Open, "view"
+// must be a per-user LOCK (a cap), not a view grant — a view grant would leave
+// the member on edit. "default" clears the override (falls back to Open / the
+// folder's inherited setting). One row per (resource, user): grant OR lock.
+type MemberChoice = "default" | "view" | "edit";
 
 interface Resource {
   key: string;
@@ -254,10 +260,13 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
   };
 
   const memberChoice = (userId: string): MemberChoice => {
+    // A per-user lock reads back as read-only ("view"); an edit grant as "edit".
+    // A legacy view grant also maps to "view" (it will be rewritten as a lock
+    // the next time the member is set, so it actually takes effect).
     const lock = shares.find(
       (s) => sharePrincipalType(s) === "user" && sharePrincipalId(s) === userId && s.permission === "locked",
     );
-    if (lock) return "readonly";
+    if (lock) return "view";
     const grant = shares.find(
       (s) => sharePrincipalType(s) === "user" && sharePrincipalId(s) === userId && s.permission !== "locked",
     );
@@ -269,21 +278,24 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
   const setMember = (userId: string, choice: MemberChoice) => {
     if (!selected) return;
     void run(async () => {
-      // Clear any existing direct rows for this user on this resource.
+      // Clear any existing direct rows for this user on this resource — the
+      // unique (resource, principal) key means only one can exist at a time.
       for (const s of shares) {
         if (sharePrincipalType(s) === "user" && sharePrincipalId(s) === userId) {
           if (s.permission === "locked") await useStore.getState().removeLock(s.id);
           else await authManager.api.revokeShare(s.id);
         }
       }
-      if (choice === "view" || choice === "edit") {
+      if (choice === "edit") {
         await authManager.api.createShare({
           resourceType: selected.kind,
           resourceId: selected.id,
           principalId: userId,
-          permission: choice,
+          permission: "edit",
         });
-      } else if (choice === "readonly") {
+      } else if (choice === "view") {
+        // Read-only for this member = a per-user lock (caps at view). A view
+        // grant would NOT lower an Open member, so we lock instead.
         await useStore.getState().createLock(selected.kind, selected.id, userId);
       }
     });
@@ -466,9 +478,8 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
                             onChange={(e) => setMember(m.userId, e.target.value as MemberChoice)}
                           >
                             <option value="default">Default</option>
-                            <option value="view">Can view</option>
+                            <option value="view">Can view (read-only)</option>
                             <option value="edit">Can edit</option>
-                            <option value="readonly">Read-only</option>
                           </select>
                         ) : (
                           <span className={`access-lv ${levelCls(m.permission)}`}>{levelLabel(m.permission)}</span>
@@ -512,7 +523,7 @@ function sourceLabel(m: ResolvedMemberAccess, choice: MemberChoice): string {
   if (m.role === "owner") return "Owner · full access";
   if (m.role === "admin") return "Admin · full access";
   if (choice === "edit") return "Shared · can edit";
-  if (choice === "view") return "Shared · can view";
-  if (choice === "readonly") return "Read-only · locked";
-  return "Inherited from a folder";
+  if (choice === "view") return "Read-only · locked";
+  // default (no direct override): reflect whatever the baseline resolved to.
+  return m.permission === "view" ? "Inherited · read-only" : "Open · can edit";
 }

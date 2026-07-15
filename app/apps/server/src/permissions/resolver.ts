@@ -5,12 +5,14 @@ import { pool as defaultPool } from "../db/pool.js";
  * Effective-permission resolver (spec 04 §3, plus locks).
  *
  *   1. Workspace owner/admin  -> `edit` on everything in the workspace.
- *   2. Else take the MAX of: a share on the file itself, and any share on a
- *      containing folder (walking parent_id up to the root).
+ *   2. Else take the MAX of: a share on the file itself, a share on a
+ *      containing folder (walking parent_id up to the root), and a
+ *      workspace-scoped grant (org-wide "Open"/"Read-only", or per-user).
  *   3. `edit > view > none`. Folder grants inherit to descendants; a file
  *      share can only RAISE permission. No matching grant -> `none`.
  *
- * A plain `member` with no share has no content access (`none`).
+ * A plain `member` inherits the workspace grant (Open by default) and so gets
+ * `edit`; with no grant at all it has no content access (`none`).
  *
  * Locks (permission = 'locked') are a DENY overlay resolved AFTER the rules
  * above: when a lock matches the doc or any ancestor folder — for this user
@@ -100,25 +102,48 @@ async function memberRole(
 }
 
 /**
- * Highest share permission for a user across a file (if `docId` is set) plus a
- * set of folders. Passing `docId = null` resolves a folder resource directly:
- * only the folder rows in `folderIds` (the folder itself + its ancestors) match.
+ * Highest share permission for a user across a file (if `docId` is set), a set
+ * of folders, and the workspace itself. Passing `docId = null` resolves a
+ * folder resource directly: only the folder rows in `folderIds` (the folder
+ * itself + its ancestors) match.
+ *
+ * Grants come from three scopes, all combined with highest-wins:
+ *   - per-user file / folder shares (the classic ACL);
+ *   - a workspace-scoped grant (resource_type 'workspace', resource_id =
+ *     `organizationId`) — either org-wide (`principal_type 'org'`, the "Open"/
+ *     "Read-only" default) or for this user specifically. A workspace grant is
+ *     the only thing that reaches notes at the vault root (folder_id NULL),
+ *     which have no folder to hang a share on.
  */
 async function sharePermission(
   db: Queryable,
   userId: string,
   docId: string | null,
   folderIds: string[],
+  organizationId: string,
+  isMember: boolean,
 ): Promise<Permission> {
-  const fileClause = docId ? "(resource_type = 'file' AND resource_id = $2) OR " : "";
+  // The org-wide ("Open"/"Read-only") grant applies ONLY to actual workspace
+  // members — never to outsiders who merely know a doc id. Per-user grants are
+  // inherently scoped to the user, so they need no membership gate.
+  const orgGrantClause = isMember
+    ? "OR (resource_type = 'workspace' AND resource_id = $4 AND principal_type = 'org')"
+    : "";
+  // $2 (the doc id) is always referenced with an explicit cast + null guard so
+  // Postgres can infer its type even for a folder resource, where docId is null
+  // and the file branch is inert.
   const { rows } = await db.query<{ permission: string }>(
     `SELECT permission FROM shares
-      WHERE principal_type = 'user'
-        AND principal_id = $1
+      WHERE permission IN ('view', 'edit')
         AND (
-          ${fileClause}(resource_type = 'folder' AND resource_id = ANY($3::text[]))
+          (principal_type = 'user' AND principal_id = $1 AND (
+            ($2::text IS NOT NULL AND resource_type = 'file' AND resource_id = $2)
+            OR (resource_type = 'folder' AND resource_id = ANY($3::text[]))
+            OR (resource_type = 'workspace' AND resource_id = $4)
+          ))
+          ${orgGrantClause}
         )`,
-    [userId, docId, folderIds],
+    [userId, docId, folderIds, organizationId],
   );
   let best: Permission = "none";
   for (const r of rows) {
@@ -139,7 +164,8 @@ async function isLocked(
   docId: string | null,
   folderIds: string[],
 ): Promise<boolean> {
-  const fileClause = docId ? "(resource_type = 'file' AND resource_id = $2) OR " : "";
+  // $2 (doc id) is always referenced with a cast + null guard so Postgres can
+  // infer its type for a folder resource (docId null → file branch inert).
   const { rows } = await db.query<{ ok: number }>(
     `SELECT 1 AS ok FROM shares
       WHERE permission = 'locked'
@@ -148,7 +174,8 @@ async function isLocked(
           OR (principal_type = 'user' AND principal_id = $1)
         )
         AND (
-          ${fileClause}(resource_type = 'folder' AND resource_id = ANY($3::text[]))
+          ($2::text IS NOT NULL AND resource_type = 'file' AND resource_id = $2)
+          OR (resource_type = 'folder' AND resource_id = ANY($3::text[]))
         )
       LIMIT 1`,
     [userId, docId, folderIds],
@@ -171,7 +198,14 @@ export async function effectivePermission(
   if (role === "owner" || role === "admin") {
     granted = "edit";
   } else {
-    granted = await sharePermission(db, userId, docId, folderIds);
+    granted = await sharePermission(
+      db,
+      userId,
+      docId,
+      folderIds,
+      loc.organizationId,
+      role !== null, // isMember — gates the org-wide grant
+    );
   }
 
   // Deny overlay: a matching lock caps at view; it never grants.
@@ -241,7 +275,14 @@ export async function resolveAccessForUser(
   const granted: Permission =
     role === "owner" || role === "admin"
       ? "edit"
-      : await sharePermission(db, userId, ctx.docId, ctx.folderIds);
+      : await sharePermission(
+          db,
+          userId,
+          ctx.docId,
+          ctx.folderIds,
+          ctx.organizationId,
+          role !== null, // isMember — gates the org-wide grant
+        );
 
   if (granted === "none") return { permission: "none", capped: false };
 
