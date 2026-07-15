@@ -8,11 +8,29 @@ import { handleMcpMessage, type JsonRpcRequest } from "../../mcp/protocol.js";
 import type { McpContext } from "../../mcp/service.js";
 import { resolveOAuthMcpAuth } from "../../mcp/oauth.js";
 import {
+  bumpMcpTokenUsage,
   createMcpToken,
   listMcpTokens,
   revokeMcpToken,
   verifyMcpToken,
 } from "../../mcp/tokens.js";
+import { TOOLS } from "../../mcp/tools.js";
+
+/**
+ * The tool catalog every connection can reach (identical for all tokens; the
+ * per-file ACL gates what each call actually touches). Surfaced to the desktop
+ * so a connection card can show "which tools it has access to" without the UI
+ * hard-coding the list. `access` classifies each tool for a compact badge.
+ */
+const TOOL_CATALOG = TOOLS.map((t) => ({
+  name: t.name,
+  description: t.description,
+  access: t.annotations?.destructiveHint
+    ? ("destructive" as const)
+    : t.annotations?.readOnlyHint
+      ? ("read" as const)
+      : ("write" as const),
+}));
 
 /**
  * Sent on every 401 from the MCP endpoint. Per the MCP auth spec (RFC 9728),
@@ -76,7 +94,8 @@ export function createMcpRoutes(deps: McpDeps): Hono {
   //      flow — the workspace comes from the user's consent-screen choice.
   app.post("/mcp", async (c) => {
     const token = extractToken(c);
-    let auth = token ? await verifyMcpToken(token) : null;
+    const client = c.req.header("user-agent") ?? c.req.header("User-Agent") ?? null;
+    let auth = token ? await verifyMcpToken(token, undefined, { client }) : null;
     if (!auth) auth = await resolveOAuthMcpAuth(c.req.raw.headers);
     if (!auth) {
       c.header("WWW-Authenticate", WWW_AUTHENTICATE);
@@ -110,10 +129,15 @@ export function createMcpRoutes(deps: McpDeps): Hono {
     // A batch (array) or a single message. Notifications yield no response.
     const messages = Array.isArray(body) ? body : [body];
     const responses = [];
+    let toolCalls = 0;
     for (const m of messages) {
+      if ((m as JsonRpcRequest)?.method === "tools/call") toolCalls++;
       const res = await handleMcpMessage(m as JsonRpcRequest, ctx);
       if (res) responses.push(res);
     }
+
+    // Attribute real tool work to the connection (token-auth only; OAuth has no row).
+    if (auth.tokenId) bumpMcpTokenUsage(auth.tokenId, toolCalls);
 
     if (responses.length === 0) return c.body(null, 202); // notifications only
     return c.json(Array.isArray(body) ? responses : responses[0]);
@@ -135,7 +159,9 @@ export function createMcpRoutes(deps: McpDeps): Hono {
       return c.json({ error: "Not a member of this workspace" }, 403);
     }
     const tokens = await listMcpTokens({ userId: session.userId, organizationId: org });
-    return c.json({ tokens });
+    // `tools` is the catalog every connection can reach — the desktop shows it
+    // as "tools it has access to" per connection.
+    return c.json({ tokens, tools: TOOL_CATALOG });
   });
 
   app.post("/mcp/tokens", async (c) => {

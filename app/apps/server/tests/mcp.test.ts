@@ -11,7 +11,7 @@ import {
   seedUser,
   seedVault,
 } from "./helpers/seed.js";
-import { createMcpToken } from "../src/mcp/tokens.js";
+import { createMcpToken, listMcpTokens } from "../src/mcp/tokens.js";
 
 /**
  * End-to-end MCP surface: token auth, JSON-RPC dispatch, CRUD tools, and that
@@ -57,6 +57,16 @@ async function call(token: string, name: string, args: Record<string, unknown> =
 async function tokenFor(userId: string, orgId: string): Promise<string> {
   const { token } = await createMcpToken({ userId, organizationId: orgId }, "test");
   return token;
+}
+
+/** Poll `fn` until it returns non-null (best-effort async writes settle). */
+async function waitFor<T>(fn: () => Promise<T | null>, tries = 50): Promise<T> {
+  for (let i = 0; i < tries; i++) {
+    const v = await fn();
+    if (v != null) return v;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error("waitFor: condition never met");
 }
 
 describe("MCP server", () => {
@@ -209,6 +219,42 @@ describe("MCP server", () => {
     const res = await call(tokenA, "list_folders", { vaultId: vaultB });
     expect(res.isError).toBe(true);
     expect(res.text).toMatch(/not in this token's workspace/i);
+  });
+
+  it("tracks per-connection usage: tool calls, last-used, and client", async () => {
+    const owner = await seedUser("owner@mcp6.com");
+    const org = await seedOrg("Acme", "acme-mcp6");
+    await seedMember(org, owner, "owner");
+    const vault = await seedVault(org);
+    const { token, row } = await createMcpToken({ userId: owner, organizationId: org }, "conn");
+    expect(row.useCount).toBe(0);
+    expect(row.lastClient).toBeNull();
+
+    // A handshake (no tools/call) must NOT count as usage, but should stamp the client.
+    await app.fetch(
+      new Request("http://local/api/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+          "user-agent": "claude-code/1.2.3",
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      }),
+    );
+
+    // Two real tool calls → use_count should reach 2.
+    await call(token, "list_vaults");
+    await call(token, "list_notes", { vaultId: vault });
+
+    // Bumps are best-effort/async — poll the listing until it settles.
+    const settled = await waitFor(async () => {
+      const [t] = await listMcpTokens({ userId: owner, organizationId: org });
+      return t.useCount >= 2 ? t : null;
+    });
+    expect(settled.useCount).toBe(2);
+    expect(settled.lastUsedAt).not.toBeNull();
+    expect(settled.lastClient).toBe("claude-code/1.2.3");
   });
 
   it("revoked membership invalidates the token", async () => {

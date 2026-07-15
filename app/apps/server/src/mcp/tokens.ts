@@ -23,11 +23,21 @@ export interface McpTokenRow {
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /** How many tool calls this connection has made (bumped per tools/call). */
+  useCount: number;
+  /** The last client's User-Agent, so the UI can name the connection. */
+  lastClient: string | null;
 }
 
 export interface McpAuth {
   userId: string;
   organizationId: string;
+  /**
+   * The mcp_tokens row id when auth came from a minted token, so the request
+   * handler can attribute tool-call usage back to the connection. Absent for
+   * OAuth-authenticated requests (no token row exists for those).
+   */
+  tokenId?: string;
 }
 
 function hashToken(token: string): string {
@@ -65,6 +75,8 @@ export async function createMcpToken(
       tokenPrefix,
       createdAt: rows[0].created_at,
       lastUsedAt: null,
+      useCount: 0,
+      lastClient: null,
     },
   };
 }
@@ -80,8 +92,10 @@ export async function listMcpTokens(
     token_prefix: string;
     created_at: string;
     last_used_at: string | null;
+    use_count: number;
+    last_client: string | null;
   }>(
-    `SELECT id, name, token_prefix, created_at, last_used_at
+    `SELECT id, name, token_prefix, created_at, last_used_at, use_count, last_client
        FROM mcp_tokens
       WHERE user_id = $1 AND organization_id = $2
       ORDER BY created_at DESC`,
@@ -93,6 +107,9 @@ export async function listMcpTokens(
     tokenPrefix: r.token_prefix,
     createdAt: r.created_at,
     lastUsedAt: r.last_used_at,
+    // pg returns INTEGER as a JS number, but coerce defensively.
+    useCount: Number(r.use_count ?? 0),
+    lastClient: r.last_client,
   }));
 }
 
@@ -109,15 +126,20 @@ export async function revokeMcpToken(
   return (rowCount ?? 0) > 0;
 }
 
+/** Longest client string we retain — a User-Agent, trimmed so it can't bloat the row. */
+const CLIENT_MAX = 200;
+
 /**
  * Resolve a presented token to its auth context. Returns null when the token is
  * unknown OR the user is no longer a member of the workspace it was scoped to
- * (membership can be revoked out from under a live token). Bumps last_used_at
- * best-effort. This is the single gate every MCP request passes through.
+ * (membership can be revoked out from under a live token). Stamps last_used_at
+ * (and the client, when given) best-effort — this drives the desktop's "active"
+ * indicator. This is the single gate every MCP request passes through.
  */
 export async function verifyMcpToken(
   token: string,
   db: Queryable = defaultPool,
+  meta?: { client?: string | null },
 ): Promise<McpAuth | null> {
   if (!token || !token.startsWith(PREFIX)) return null;
   const { rows } = await db.query<{
@@ -135,10 +157,31 @@ export async function verifyMcpToken(
   const role = await orgRole(row.organization_id, row.user_id, db);
   if (!role) return null;
 
-  // Best-effort usage stamp; never block the request on it.
-  db.query("UPDATE mcp_tokens SET last_used_at = now() WHERE id = $1", [row.id]).catch(
-    () => {},
-  );
+  // Best-effort activity stamp; never block the request on it. use_count is NOT
+  // bumped here — that happens per tools/call via bumpMcpTokenUsage so the count
+  // reflects real work, not initialize/tools-list handshakes.
+  const client = meta?.client ? meta.client.slice(0, CLIENT_MAX) : null;
+  db.query(
+    "UPDATE mcp_tokens SET last_used_at = now(), last_client = COALESCE($2, last_client) WHERE id = $1",
+    [row.id, client],
+  ).catch(() => {});
 
-  return { userId: row.user_id, organizationId: row.organization_id };
+  return { userId: row.user_id, organizationId: row.organization_id, tokenId: row.id };
+}
+
+/**
+ * Attribute `count` tool calls to a token (best-effort; never blocks the reply).
+ * Called by the MCP route after a request so the desktop's usage figure tracks
+ * actual tool invocations rather than every JSON-RPC handshake message.
+ */
+export function bumpMcpTokenUsage(
+  tokenId: string,
+  count: number,
+  db: Queryable = defaultPool,
+): void {
+  if (count <= 0) return;
+  db.query("UPDATE mcp_tokens SET use_count = use_count + $2 WHERE id = $1", [
+    tokenId,
+    count,
+  ]).catch(() => {});
 }

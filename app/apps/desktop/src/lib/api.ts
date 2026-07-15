@@ -120,6 +120,23 @@ export interface McpTokenRow {
   tokenPrefix: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /** Tool calls made with this connection so far. */
+  useCount: number;
+  /** The client on the other end (its User-Agent), if it has ever connected. */
+  lastClient: string | null;
+}
+
+/** One MCP tool a connection can reach, classified for a compact access badge. */
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  access: "read" | "write" | "destructive";
+}
+
+/** The MCP connections view for a workspace: each token plus the shared tool catalog. */
+export interface McpConnections {
+  tokens: McpTokenRow[];
+  tools: McpToolInfo[];
 }
 
 /** Attachment blob metadata returned by the server (camelCase). */
@@ -492,11 +509,16 @@ export class ApiClient {
 
   /** The caller's MCP tokens for the active workspace (metadata only). */
   async listMcpTokens(): Promise<McpTokenRow[]> {
-    const { data } = await this.request<{ tokens: McpTokenRow[] }>(
-      "GET",
-      "/api/mcp/tokens",
-    );
-    return data.tokens ?? [];
+    return (await this.listMcpConnections()).tokens;
+  }
+
+  /**
+   * The caller's MCP connections for the active workspace: each token (with live
+   * usage/activity metadata) plus the shared tool catalog every one can reach.
+   */
+  async listMcpConnections(): Promise<McpConnections> {
+    const { data } = await this.request<McpConnections>("GET", "/api/mcp/tokens");
+    return { tokens: data.tokens ?? [], tools: data.tools ?? [] };
   }
 
   /** Mint a new MCP token. The `token` field is the plaintext — shown once. */

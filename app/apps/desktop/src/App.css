@@ -2847,6 +2847,121 @@ button.primary.hero:hover:not(:disabled) {
   word-break: break-all;
 }
 
+/* MCP connections — one card per token: live status, client, usage, tools. */
+.mcp-conn-list {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.mcp-conn {
+  border: 1px solid var(--border-subtle, var(--bg-hover));
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+.mcp-conn.open {
+  border-color: var(--accent);
+}
+.mcp-conn-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+.mcp-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+.mcp-dot.on {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+}
+.mcp-dot.off {
+  background: var(--text-secondary);
+  opacity: 0.5;
+}
+.mcp-conn-main {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-conn-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.mcp-status {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  padding: 1px var(--sp-2);
+}
+.mcp-status.on {
+  color: #16a34a;
+  background: rgba(34, 197, 94, 0.14);
+}
+.mcp-status.off {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.mcp-conn-sub {
+  font-size: var(--fs-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  border-top: 1px solid var(--border-subtle, var(--bg-hover));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+}
+.mcp-tool-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  min-width: 0;
+}
+.mcp-tool-list code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.mcp-tool-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+.mcp-tool-badge.read {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+.mcp-tool-badge.write {
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.14);
+}
+.mcp-tool-badge.destructive {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.14);
+}
+
 /* "Set up this workspace" folder prompt. Sits above the settings page. */
 .workspace-folder-backdrop {
   z-index: 210;

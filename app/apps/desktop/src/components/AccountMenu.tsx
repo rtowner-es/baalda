@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { type McpTokenRow } from "../lib/api";
+import { type McpToolInfo, type McpTokenRow } from "../lib/api";
 import { ITEM_COLORS, itemColorValue } from "../lib/appearance";
 import { authManager } from "../lib/auth/authManager";
 import * as ipc from "../lib/ipc";
@@ -1183,6 +1183,7 @@ function McpTab() {
   const hasWorkspace = !!session?.activeOrganizationId;
 
   const [tokens, setTokens] = useState<McpTokenRow[]>([]);
+  const [tools, setTools] = useState<McpToolInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1191,6 +1192,9 @@ function McpTab() {
     null,
   );
   const [copied, setCopied] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  // Bumps every 20s so "connected" dots + relative times stay live while open.
+  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (!hasWorkspace) {
@@ -1198,17 +1202,26 @@ function McpTab() {
       return;
     }
     let cancelled = false;
-    authManager.api
-      .listMcpTokens()
-      .then((t) => {
-        if (!cancelled) setTokens(t);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const load = () =>
+      authManager.api
+        .listMcpConnections()
+        .then(({ tokens, tools }) => {
+          if (cancelled) return;
+          setTokens(tokens);
+          setTools(tools);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    void load();
+    // Poll so a connection that goes active/idle while the panel is open shows it.
+    const poll = window.setInterval(() => void load(), 20_000);
+    const tickle = window.setInterval(() => setTick((n) => n + 1), 20_000);
     return () => {
       cancelled = true;
+      window.clearInterval(poll);
+      window.clearInterval(tickle);
     };
   }, [hasWorkspace]);
 
@@ -1330,38 +1343,118 @@ function McpTab() {
         </div>
       )}
 
+      <div className="menu-sep" />
+      <div className="subhead">Connections</div>
+      <div className="muted">
+        Every token is a connection into this workspace. Each reaches the same{" "}
+        {tools.length || ""} tools, gated by your access — expand one to see them,
+        how active it is, and how much it's been used.
+      </div>
+
       {loading ? (
         <div className="muted">Loading…</div>
       ) : tokens.length === 0 ? (
-        <div className="muted">No tokens yet.</div>
+        <div className="muted">No connections yet.</div>
       ) : (
-        <ul className="member-list">
-          {tokens.map((t) => (
-            <li key={t.id}>
-              <span className="menu-swatch" aria-hidden="true">
-                ⚙
-              </span>
-              <span className="member-name">
-                {t.name}
-                <span className="muted"> · {t.tokenPrefix}</span>
-                <span className="muted">
-                  {" "}
-                  · {t.lastUsedAt ? `used ${new Date(t.lastUsedAt).toLocaleDateString()}` : "never used"}
-                </span>
-              </span>
-              <button
-                className="link-btn danger"
-                disabled={busy}
-                onClick={() => void revoke(t.id)}
-              >
-                Revoke
-              </button>
-            </li>
-          ))}
+        <ul className="mcp-conn-list">
+          {tokens.map((t) => {
+            const live = isConnected(t.lastUsedAt);
+            const open = expanded === t.id;
+            return (
+              <li key={t.id} className={`mcp-conn${open ? " open" : ""}`}>
+                <div className="mcp-conn-head">
+                  <span
+                    className={`mcp-dot ${live ? "on" : "off"}`}
+                    title={live ? "Connected" : "Disconnected"}
+                    aria-hidden="true"
+                  />
+                  <div className="mcp-conn-main">
+                    <div className="mcp-conn-title">
+                      {t.name}
+                      <span className={`mcp-status ${live ? "on" : "off"}`}>
+                        {live ? "Connected" : "Disconnected"}
+                      </span>
+                    </div>
+                    <div className="mcp-conn-sub muted">
+                      {clientLabel(t.lastClient)}
+                      {" · "}
+                      {t.tokenPrefix}
+                      {" · "}
+                      {t.useCount} {t.useCount === 1 ? "call" : "calls"}
+                      {" · "}
+                      {t.lastUsedAt ? `last active ${relTime(t.lastUsedAt)}` : "never used"}
+                    </div>
+                  </div>
+                  <button
+                    className="link-btn"
+                    onClick={() => setExpanded((e) => (e === t.id ? null : t.id))}
+                  >
+                    {open ? "Hide tools" : `Tools · ${tools.length}`}
+                  </button>
+                  <button
+                    className="link-btn danger"
+                    disabled={busy}
+                    onClick={() => void revoke(t.id)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+                {open && (
+                  <ul className="mcp-tool-list">
+                    {tools.map((tool) => (
+                      <li key={tool.name} title={tool.description}>
+                        <span className={`mcp-tool-badge ${tool.access}`}>
+                          {tool.access === "read"
+                            ? "read"
+                            : tool.access === "destructive"
+                              ? "delete"
+                              : "write"}
+                        </span>
+                        <code>{tool.name}</code>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </>
   );
+}
+
+/** A connection is "active" when it made a request in the last few minutes
+ *  (MCP here is stateless HTTP — there's no socket to watch, so recency is it). */
+const CONNECTED_WINDOW_MS = 3 * 60 * 1000;
+function isConnected(lastUsedAt: string | null): boolean {
+  if (!lastUsedAt) return false;
+  return Date.now() - new Date(lastUsedAt).getTime() < CONNECTED_WINDOW_MS;
+}
+
+/** Compact relative time: "just now", "5m ago", "3h ago", "2d ago", else a date. */
+function relTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60_000) return "just now";
+  const m = Math.floor(diff / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/** Best-effort human name for a client from its User-Agent. */
+function clientLabel(ua: string | null): string {
+  if (!ua) return "Unknown client";
+  const s = ua.toLowerCase();
+  if (s.includes("claude-code") || s.includes("claude code")) return "Claude Code";
+  if (s.includes("claude")) return "Claude";
+  if (s.includes("cursor")) return "Cursor";
+  if (s.includes("node")) return "Node client";
+  // Fall back to the leading token of the UA (e.g. "MyApp/1.2" → "MyApp").
+  return ua.split(/[\s/]/)[0].slice(0, 40) || "Unknown client";
 }
 
 /**
