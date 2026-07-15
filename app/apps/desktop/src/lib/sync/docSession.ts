@@ -131,6 +131,10 @@ export class SyncManager {
       vaultId,
       sink: store,
       onStatus: (s) => this.onVaultStatus?.(s),
+      // An ACL change in this vault may have flipped the open note's grant
+      // (view↔edit, lock/unlock). Re-mint its token so the editor becomes
+      // read-only/editable live — no reopen (spec 04 §4).
+      onAclChanged: () => this.current?.refreshAccess(),
     });
     this.vaultEngine.start();
   }

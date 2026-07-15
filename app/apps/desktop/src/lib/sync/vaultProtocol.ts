@@ -18,6 +18,7 @@ export interface HelloFrame {
 export type ServerControl =
   | { t: "ready" }
   | { t: "drop"; docId: string }
+  | { t: "reauth" }
   | { t: "err"; message: string };
 
 export function encodeHello(frame: Omit<HelloFrame, "t">): string {
@@ -35,6 +36,7 @@ export function parseServerControl(text: string): ServerControl | null {
   if (!v || typeof v !== "object") return null;
   const t = (v as { t?: unknown }).t;
   if (t === "ready") return { t: "ready" };
+  if (t === "reauth") return { t: "reauth" };
   if (t === "drop" && typeof (v as { docId?: unknown }).docId === "string") {
     return { t: "drop", docId: (v as { docId: string }).docId };
   }

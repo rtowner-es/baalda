@@ -26,6 +26,27 @@
   padding: var(--sp-2) var(--sp-6);
 }
 
+/* When a lock banner and the presence stack coexist, they share one row:
+   the banner takes the width it needs on the left, the avatar sits at the
+   far right on the same level. The banner is shortened just enough to clear
+   the circle. */
+.editor-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6) 0 0;
+}
+.editor-topbar .editor-lockbanner {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 0 0 var(--sp-6);
+}
+.editor-topbar .editor-toolbar {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
 .editor-column .editor-host {
   flex: 1;
   min-height: 0;

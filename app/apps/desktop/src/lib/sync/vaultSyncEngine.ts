@@ -62,6 +62,10 @@ export interface VaultSyncEngineOptions {
   /** Defaults to `deriveVaultWsUrl(api base)`. */
   wsUrl?: string;
   onStatus?: (status: VaultSyncStatus) => void;
+  /** Fired when the server signals an ACL change in this vault (`reauth`). The
+   *  open note syncs over its own socket, not this feed, so the owner re-mints
+   *  that doc's token to pick up a view↔edit / lock change in realtime. */
+  onAclChanged?: () => void;
   /** Injected in tests. Defaults to the global WebSocket. */
   wsFactory?: WsFactory;
   /** Backoff bounds (ms). */
@@ -96,6 +100,7 @@ export class VaultSyncEngine {
   private readonly sink: DocUpdateSink;
   private readonly wsUrl: string;
   private readonly onStatus?: (s: VaultSyncStatus) => void;
+  private readonly onAclChanged?: () => void;
   private readonly wsFactory: WsFactory;
   private readonly baseMs: number;
   private readonly maxMs: number;
@@ -115,6 +120,7 @@ export class VaultSyncEngine {
     this.sink = opts.sink;
     this.wsUrl = opts.wsUrl ?? deriveVaultWsUrl(this.api.getBaseUrl());
     this.onStatus = opts.onStatus;
+    this.onAclChanged = opts.onAclChanged;
     this.wsFactory =
       opts.wsFactory ?? ((url) => new WebSocket(url) as unknown as WebSocketLike);
     this.baseMs = opts.reconnect?.baseMs ?? 500;
@@ -219,6 +225,10 @@ export class VaultSyncEngine {
         this.setStatus("synced");
       } else if (control.t === "drop") {
         this.sink.drop(control.docId);
+      } else if (control.t === "reauth") {
+        // ACL changed in this vault — the open note (synced over its own socket)
+        // must re-mint its token to flip read-only/edit live. See onAclChanged.
+        this.onAclChanged?.();
       } else if (control.t === "err") {
         // Server refused us mid-session (e.g. bad token) — reconnect fresh.
         this.onDisconnect();

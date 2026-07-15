@@ -30,6 +30,7 @@ export interface HelloFrame {
 export type ServerControl =
   | { t: "ready" } // initial backfill drained
   | { t: "drop"; docId: string } // access lost / doc removed -> client evicts
+  | { t: "reauth" } // ACL changed in this vault -> client re-mints its open doc's token
   | { t: "err"; message: string };
 
 export function parseHello(text: string): HelloFrame | null {

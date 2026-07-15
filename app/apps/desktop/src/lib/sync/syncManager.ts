@@ -8,7 +8,7 @@
 // every (re)connect re-mints a fresh token; a proactive timer reconnects shortly
 // before expiry (Hocuspocus doesn't re-auth mid-connection — spec 03 §7).
 
-import { HocuspocusProvider } from "@hocuspocus/provider";
+import { HocuspocusProvider, WebSocketStatus } from "@hocuspocus/provider";
 import type { Awareness } from "y-protocols/awareness";
 import type * as Y from "yjs";
 import { ApiClient, ApiError } from "../api";
@@ -103,6 +103,7 @@ export class DocSync {
   private _status: SyncStatus = "connecting";
   private _readOnly = false;
   private destroyed = false;
+  private reconnectPending = false;
 
   constructor(opts: DocSyncOptions) {
     this.api = opts.api;
@@ -128,6 +129,21 @@ export class DocSync {
         // if the mint itself 403s, mintToken() sets 'no-access' and we stop.
         if (!this.destroyed && this._status !== "no-access") {
           this.setStatus("error");
+          this.reconnectWithFreshToken();
+        }
+      },
+      onClose: ({ event }) => {
+        // Hocuspocus v4 kicks a doc connection IN-BAND: `closeConnections` on
+        // the server detaches the doc and sends a Close *message* while the
+        // websocket stays open (one socket can multiplex many docs). No
+        // socket-level event fires, so a server-side kick — lock/unlock, share
+        // change, revocation — would otherwise be invisible here and the editor
+        // would keep its stale grant until the note is reopened. An open socket
+        // is what distinguishes the in-band kick from a real disconnect (which
+        // the provider's own backoff already handles).
+        if (this.destroyed || this._status === "no-access") return;
+        const ws = this.provider.configuration.websocketProvider?.webSocket;
+        if (event.code === 1000 && ws && ws.readyState === ws.OPEN) {
           this.reconnectWithFreshToken();
         }
       },
@@ -202,13 +218,46 @@ export class DocSync {
     }
   }
 
+  /**
+   * Re-mint this doc's token and reconnect, picking up any permission change
+   * (view↔edit, lock/unlock) without a reopen. Called when the vault channel
+   * signals an ACL change. Uses the same proven path as the expiry refresher.
+   */
+  refreshAccess(): void {
+    this.reconnectWithFreshToken();
+  }
+
   private reconnectWithFreshToken(): void {
-    if (this.destroyed) return;
+    if (this.destroyed || this.reconnectPending) return;
+    const wsp = this.provider.configuration.websocketProvider;
+    // v4 gotcha: connect() silently no-ops while the socket status is still
+    // "connected" — and disconnect()'s close event only flips it to
+    // "disconnected" a tick later. A back-to-back disconnect+connect therefore
+    // strands the provider offline forever. Connect only once the close has
+    // actually landed (with a timeout fallback in case it never fires).
+    this.reconnectPending = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const connectNow = () => {
+      wsp.off("disconnect", connectNow);
+      if (timer) clearTimeout(timer);
+      this.reconnectPending = false;
+      if (this.destroyed) return;
+      try {
+        void wsp.connect();
+      } catch (e) {
+        console.error("[sync] reconnect failed", e);
+      }
+    };
+    if (wsp.status === WebSocketStatus.Disconnected) {
+      connectNow();
+      return;
+    }
+    wsp.on("disconnect", connectNow);
+    timer = setTimeout(connectNow, 2000);
     try {
       this.provider.disconnect();
-      this.provider.connect();
     } catch (e) {
-      console.error("[sync] reconnect failed", e);
+      console.error("[sync] disconnect failed", e);
     }
   }
 

@@ -131,9 +131,15 @@ export function createShareRoutes(deps: ShareDeps): Hono {
       ],
     );
 
-    // A new lock downgrades live editors — force reconnect so sessions come
-    // back with their now read-only sync tokens, same as revocation does.
-    if (permission === "locked") {
+    // Any downgrade to read-only must reach live editors immediately — force
+    // reconnect so open sessions come back with fresh (now read-only) sync
+    // tokens, same as revocation does. This covers a lock, a per-user edit→view
+    // change, and a workspace Open→Read-only posture flip (all land as
+    // view/locked). An 'edit' grant only widens access, so it needs no kick;
+    // the onAclChanged push below lets background subscribers pick it up.
+    // Reconnect re-mints each client's own permission, so a peer who still has
+    // edit gets edit back — this only tightens editors that should go read-only.
+    if (permission === "locked" || permission === "view") {
       const docs = await docsForResource(resourceType, resourceId);
       for (const d of docs) {
         deps.disconnectDoc(d.vaultId, d.docId);

@@ -27,3 +27,6 @@ logs/
 
 # Local app data (derived index + CRDT store)
 .context/
+
+# Claude session runtime lock
+.claude/scheduled_tasks.lock

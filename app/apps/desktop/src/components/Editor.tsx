@@ -484,59 +484,63 @@ export function Editor() {
 
   return (
     <div className="editor-column">
-      {readOnly && (
-        <div
-          className={`editor-lockbanner${lockScope ? " locked" : " viewonly"}`}
-          role="status"
-        >
-          <span className="editor-lockbanner-icon" aria-hidden="true">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+      {(readOnly || showToolbar) && (
+        <div className="editor-topbar">
+          {readOnly && (
+            <div
+              className={`editor-lockbanner${lockScope ? " locked" : " viewonly"}`}
+              role="status"
             >
-              <rect x="4" y="11" width="16" height="10" rx="2" />
-              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-            </svg>
-          </span>
-          <span className="editor-lockbanner-text">
-            <strong>{lockScope ? "This note is locked" : "View-only access"}</strong>
-            <span className="editor-lockbanner-sub">
-              {lockScope
-                ? "You can read it, but your changes won’t be saved or synced."
-                : "You can read this note, but you can’t edit it."}
-            </span>
-          </span>
-        </div>
-      )}
-      {showToolbar && (
-        <div className="editor-toolbar">
-          <PresenceBar
-            peers={peers}
-            open={rosterOpen}
-            onToggle={() => setRosterOpen((o) => !o)}
-            online={
-              syncEnabled &&
-              (syncStatus === "synced" ||
-                syncStatus === "read-only" ||
-                syncStatus === "connecting")
-            }
-          />
-          {rosterOpen && (
-            <PeerRoster
-              peers={peers}
-              selfId={myId}
-              onPing={sendPing}
-              onClose={() => setRosterOpen(false)}
-            />
+              <span className="editor-lockbanner-icon" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </span>
+              <span className="editor-lockbanner-text">
+                <strong>{lockScope ? "This note is locked" : "View-only access"}</strong>
+                <span className="editor-lockbanner-sub">
+                  {lockScope
+                    ? "You can read it, but your changes won’t be saved or synced."
+                    : "You can read this note, but you can’t edit it."}
+                </span>
+              </span>
+            </div>
           )}
-          {pingFrom && (
-            <span className="ping-toast" role="status">
-              🔔 {pingFrom} pinged you
-            </span>
+          {showToolbar && (
+            <div className="editor-toolbar">
+              <PresenceBar
+                peers={peers}
+                open={rosterOpen}
+                onToggle={() => setRosterOpen((o) => !o)}
+                online={
+                  syncEnabled &&
+                  (syncStatus === "synced" ||
+                    syncStatus === "read-only" ||
+                    syncStatus === "connecting")
+                }
+              />
+              {rosterOpen && (
+                <PeerRoster
+                  peers={peers}
+                  selfId={myId}
+                  onPing={sendPing}
+                  onClose={() => setRosterOpen(false)}
+                />
+              )}
+              {pingFrom && (
+                <span className="ping-toast" role="status">
+                  🔔 {pingFrom} pinged you
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

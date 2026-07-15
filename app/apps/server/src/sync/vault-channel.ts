@@ -207,6 +207,13 @@ class VaultConnection {
     for (const docId of prev) {
       if (!next.has(docId)) this.send({ t: "drop", docId }); // access lost
     }
+    // The set of readable docs only shifts on add/remove — but a view↔edit change
+    // (or a lock) leaves the set intact while flipping the OPEN note's editability.
+    // The open note syncs over its own Hocuspocus socket, not this feed, so tell
+    // the client to re-mint that doc's sync token; it reconnects read-only/edit to
+    // match. Sent on every ACL change (this channel is always-on) so downgrades and
+    // unlocks both reach open editors in realtime without a reopen (spec 04 §4).
+    this.send({ t: "reauth" });
     const added = [...next].filter((d) => !prev.has(d));
     // Newly-readable docs: full backfill (client holds no state vector for them).
     await runPool(added, this.deps.concurrency, (docId) => this.sendDocBackfill(docId, undefined));
