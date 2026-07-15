@@ -131,11 +131,15 @@ export class VaultRegistry {
       if (!vaults.some((v) => v.id === vaultId)) vaultId = null;
     }
     if (!vaultId) {
-      // Reuse a same-named vault in this org if present, else create.
+      // Adopt the workspace's existing vault: exact name match if there is one,
+      // otherwise the workspace's first (oldest) vault. A joining member's local
+      // folder name rarely matches the server vault's name — requiring a name
+      // match here used to fork a second, empty vault (and 403 for plain
+      // members, who can't create vaults), so a fresh device saw an empty
+      // workspace. Only create when the org has no vault at all.
       const vaults = await this.api.listVaults();
-      const existing = vaults.find(
-        (v) => v.name === input.vaultName && vaultOrgId(v) === input.organizationId,
-      );
+      const inOrg = vaults.filter((v) => vaultOrgId(v) === input.organizationId);
+      const existing = inOrg.find((v) => v.name === input.vaultName) ?? inOrg[0];
       const vault =
         existing ??
         (await this.api.createVault({

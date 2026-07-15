@@ -64,12 +64,15 @@ describe.skipIf(!RUN)("client↔server integration", () => {
     const invite = pending.find((i) => i.email === `b-${stamp}@it.test`) ?? pending[0];
     expect(invite).toBeTruthy();
     await b.acceptInvitation(invite.id);
-    // A shares the file with B as VIEW.
+    // Workspaces default to Open (org-wide edit), so B starts writable. A makes
+    // B read-only on this file the way the Access panel does: a user-scope lock
+    // (a deny overlay capping B at view).
     await a.createShare({
       resourceType: "file",
       resourceId: docId,
       principalId: bUser.id,
-      permission: "view",
+      principalType: "user",
+      permission: "locked",
     });
 
     // ---- sync-token gating ----
