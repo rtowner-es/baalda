@@ -1,14 +1,19 @@
 import { serve } from "@hono/node-server";
+import type { Server as HttpServer } from "node:http";
 import { config } from "./config.js";
 import { createApp } from "./http/app.js";
 import { createSyncServer, disconnectDoc } from "./sync/hocuspocus.js";
+import { attachSyncUpgrade } from "./sync/http-upgrade.js";
 import { backfillIndex } from "./index/indexer.js";
 import { createDocWriter } from "./mcp/doc-writer.js";
 
 /**
  * Entry point. Runs two listeners in one Node process:
- *   - HTTP API (Hono + Better Auth) on PORT (default 3010)
- *   - Hocuspocus WebSocket sync on HOCUSPOCUS_PORT (default 3011)
+ *   - HTTP API (Hono + Better Auth) on PORT (default 3010). The Hocuspocus
+ *     sync WebSocket is ALSO reachable here at /sync, via the same shared
+ *     instance below — this is what single-port deploys (Docker/Railway) use.
+ *   - Hocuspocus WebSocket sync on HOCUSPOCUS_PORT (default 3011), kept
+ *     as-is for back-compat with existing desktop builds and local dev.
  * See README "Ports".
  */
 async function main() {
@@ -22,10 +27,15 @@ async function main() {
     docWriter: createDocWriter(sync),
   });
 
-  serve({ fetch: app.fetch, port: config.port }, (info) => {
+  const httpServer = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`HTTP API listening on http://localhost:${info.port}`);
     console.log(`Hocuspocus sync listening on ws://localhost:${config.hocuspocusPort}`);
-  });
+    console.log(`Hocuspocus sync also reachable at ws://localhost:${info.port}/sync`);
+  }) as HttpServer;
+
+  // Same `sync` instance as HOCUSPOCUS_PORT, so auth/persistence/disconnectDoc
+  // apply identically regardless of which port a client connects through.
+  const syncWss = attachSyncUpgrade(httpServer, sync);
 
   // Index any pre-existing notes missing from note_index (best-effort, async).
   backfillIndex()
@@ -34,6 +44,7 @@ async function main() {
 
   const shutdown = async () => {
     console.log("Shutting down…");
+    syncWss.close();
     await sync.destroy();
     process.exit(0);
   };
