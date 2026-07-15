@@ -99,20 +99,24 @@ async function memberRole(
   return rows[0]?.role ?? null;
 }
 
-/** Highest share permission for a user across the file itself + its folder ancestry. */
+/**
+ * Highest share permission for a user across a file (if `docId` is set) plus a
+ * set of folders. Passing `docId = null` resolves a folder resource directly:
+ * only the folder rows in `folderIds` (the folder itself + its ancestors) match.
+ */
 async function sharePermission(
   db: Queryable,
   userId: string,
-  docId: string,
+  docId: string | null,
   folderIds: string[],
 ): Promise<Permission> {
+  const fileClause = docId ? "(resource_type = 'file' AND resource_id = $2) OR " : "";
   const { rows } = await db.query<{ permission: string }>(
     `SELECT permission FROM shares
       WHERE principal_type = 'user'
         AND principal_id = $1
         AND (
-          (resource_type = 'file'   AND resource_id = $2)
-          OR (resource_type = 'folder' AND resource_id = ANY($3::text[]))
+          ${fileClause}(resource_type = 'folder' AND resource_id = ANY($3::text[]))
         )`,
     [userId, docId, folderIds],
   );
@@ -125,13 +129,17 @@ async function sharePermission(
   return best;
 }
 
-/** True when a lock row covers this doc (itself or an ancestor folder) for this user. */
+/**
+ * True when a lock row covers this resource (a file when `docId` is set, plus
+ * any folder in `folderIds`) for this user or the whole workspace.
+ */
 async function isLocked(
   db: Queryable,
   userId: string,
-  docId: string,
+  docId: string | null,
   folderIds: string[],
 ): Promise<boolean> {
+  const fileClause = docId ? "(resource_type = 'file' AND resource_id = $2) OR " : "";
   const { rows } = await db.query<{ ok: number }>(
     `SELECT 1 AS ok FROM shares
       WHERE permission = 'locked'
@@ -140,8 +148,7 @@ async function isLocked(
           OR (principal_type = 'user' AND principal_id = $1)
         )
         AND (
-          (resource_type = 'file'   AND resource_id = $2)
-          OR (resource_type = 'folder' AND resource_id = ANY($3::text[]))
+          ${fileClause}(resource_type = 'folder' AND resource_id = ANY($3::text[]))
         )
       LIMIT 1`,
     [userId, docId, folderIds],
@@ -172,4 +179,74 @@ export async function effectivePermission(
     return "view";
   }
   return granted;
+}
+
+/**
+ * Precomputed context for resolving many users against ONE resource (used by the
+ * "who can access" view). Built once, then reused per member so we don't re-walk
+ * the folder ancestry for each user.
+ *
+ * - file resource:   `docId` = the doc id, `folderIds` = ancestors of its folder.
+ * - folder resource: `docId` = null,       `folderIds` = the folder + its ancestors.
+ */
+export interface AccessContext {
+  organizationId: string;
+  docId: string | null;
+  folderIds: string[];
+}
+
+export interface ResolvedAccess {
+  permission: Permission;
+  /** True when a lock reduced an otherwise-`edit` member down to `view`. */
+  capped: boolean;
+}
+
+export async function buildAccessContext(
+  resourceType: "folder" | "file",
+  resourceId: string,
+  db: Queryable = defaultPool,
+): Promise<AccessContext | null> {
+  if (resourceType === "file") {
+    const loc = await locateDoc(db, resourceId);
+    if (!loc) return null;
+    return {
+      organizationId: loc.organizationId,
+      docId: resourceId,
+      folderIds: await ancestorFolderIds(db, loc.folderId),
+    };
+  }
+  // folder: resolve its workspace, then walk itself + ancestors.
+  const { rows } = await db.query<{ organization_id: string }>(
+    `SELECT v.organization_id
+       FROM folders f JOIN vaults v ON v.id = f.vault_id
+      WHERE f.id = $1 LIMIT 1`,
+    [resourceId],
+  );
+  const org = rows[0]?.organization_id;
+  if (!org) return null;
+  return {
+    organizationId: org,
+    docId: null,
+    folderIds: await ancestorFolderIds(db, resourceId),
+  };
+}
+
+/** Resolve one user's effective access against a prebuilt {@link AccessContext}. */
+export async function resolveAccessForUser(
+  ctx: AccessContext,
+  userId: string,
+  role: string | null,
+  db: Queryable = defaultPool,
+): Promise<ResolvedAccess> {
+  const granted: Permission =
+    role === "owner" || role === "admin"
+      ? "edit"
+      : await sharePermission(db, userId, ctx.docId, ctx.folderIds);
+
+  if (granted === "none") return { permission: "none", capped: false };
+
+  const locked = await isLocked(db, userId, ctx.docId, ctx.folderIds);
+  if (locked && granted === "edit") return { permission: "view", capped: true };
+  if (locked) return { permission: "view", capped: false };
+  return { permission: granted, capped: false };
 }

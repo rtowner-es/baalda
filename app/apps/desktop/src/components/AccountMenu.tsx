@@ -1,16 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  sharePrincipalId,
-  sharePrincipalType,
-  shareResourceId,
-  type McpTokenRow,
-} from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { type McpTokenRow } from "../lib/api";
 import { ITEM_COLORS, itemColorValue } from "../lib/appearance";
 import { authManager } from "../lib/auth/authManager";
 import * as ipc from "../lib/ipc";
-import type { TreeNode } from "../lib/ipc";
-import { resourceIdsByPath } from "../lib/locks";
-import { syncManager } from "../lib/sync/docSession";
 import {
   checkForUpdate,
   currentVersion,
@@ -18,6 +10,7 @@ import {
   useUpdateState,
 } from "../lib/updater";
 import { readOrgVaults, useStore } from "../store";
+import { AccessPanel } from "./AccessPanel";
 import { AccountSettings } from "./AccountSettings";
 import { Avatar, SyncBadge } from "./Identity";
 import { ThemeToggle } from "./ThemeToggle";
@@ -619,7 +612,7 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
 type SettingsTab =
   | "workspaces"
   | "members"
-  | "permissions"
+  | "access"
   | "mcp"
   | "appearance"
   | "updates";
@@ -649,8 +642,8 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; icon: React.ReactNo
     ),
   },
   {
-    id: "permissions",
-    label: "Permissions",
+    id: "access",
+    label: "Access",
     icon: (
       <MenuIcon>
         <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -750,8 +743,8 @@ function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
             <WorkspacesTab />
           ) : tab === "members" ? (
             <MembersTab canManage={canManage} />
-          ) : tab === "permissions" ? (
-            <PermissionsTab canManage={canManage} />
+          ) : tab === "access" ? (
+            <AccessPanel canManage={canManage} />
           ) : tab === "mcp" ? (
             <McpTab />
           ) : tab === "updates" ? (
@@ -1170,177 +1163,6 @@ function MembersTab({ canManage }: { canManage: boolean }) {
             ))}
           </ul>
         </>
-      )}
-    </>
-  );
-}
-
-const LOCK_GLYPH = (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="4" y="11" width="16" height="10" rx="2" />
-    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
-  </svg>
-);
-
-/**
- * Permissions (locks): a lock caps everyone it targets — including admins —
- * at read-only on that folder/note; folder locks inherit to contents. The
- * server enforces it on every sync token, so changes made offline won't sync.
- */
-function PermissionsTab({ canManage }: { canManage: boolean }) {
-  const session = useStore((s) => s.session);
-  const members = useStore((s) => s.members);
-  const locks = useStore((s) => s.locks);
-  const tree = useStore((s) => s.tree);
-  const syncEnabled = useStore((s) => s.syncEnabled);
-
-  const [resourceKey, setResourceKey] = useState("");
-  const [principal, setPrincipal] = useState("all");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Every synced folder + note, flattened for the picker.
-  const resources = useMemo(() => {
-    const out: Array<{ key: string; kind: "folder" | "file"; path: string; id: string }> = [];
-    const walk = (n: TreeNode, depth: number) => {
-      if (n.isDir) {
-        const id = syncManager.registry.getFolderId(n.path);
-        if (id) out.push({ key: `folder:${id}`, kind: "folder", path: n.path, id });
-      } else {
-        const m = syncManager.registry.getMapping(n.path);
-        if (m) out.push({ key: `file:${m.docId}`, kind: "file", path: n.path, id: m.docId });
-      }
-      n.children?.forEach((c) => walk(c, depth + 1));
-    };
-    tree?.children?.forEach((c) => walk(c, 0));
-    return out;
-  }, [tree]);
-
-  const idToPath = useMemo(() => resourceIdsByPath(tree), [tree]);
-
-  const memberName = (userId: string) => {
-    const m = members.find((mm) => mm.userId === userId);
-    return m?.user?.name || m?.user?.email || userId;
-  };
-
-  if (!syncEnabled) {
-    return (
-      <div className="muted perm-empty">
-        Permissions need sync — sign in and connect this folder to a workspace first.
-      </div>
-    );
-  }
-
-  const lock = async () => {
-    const res = resources.find((r) => r.key === resourceKey);
-    if (!res) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await useStore
-        .getState()
-        .createLock(res.kind, res.id, principal === "all" ? null : principal);
-      setResourceKey("");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const unlock = async (shareId: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await useStore.getState().removeLock(shareId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      {canManage && (
-        <>
-          <div className="subhead">Lock a folder or note</div>
-          <div className="muted">
-            Locked items are read-only for whoever the lock targets — admins
-            included. Folder locks apply to everything inside.
-          </div>
-          <div className="row lock-bar">
-            <select value={resourceKey} onChange={(e) => setResourceKey(e.target.value)}>
-              <option value="">Choose folder or note…</option>
-              {resources.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.kind === "folder" ? "📁 " : "📄 "}
-                  {r.kind === "file" ? r.path.replace(/\.md$/i, "") : r.path}
-                </option>
-              ))}
-            </select>
-            <select value={principal} onChange={(e) => setPrincipal(e.target.value)}>
-              <option value="all">Everyone</option>
-              {members.map((m) => (
-                <option key={m.userId} value={m.userId}>
-                  {m.user?.name || m.user?.email || m.userId}
-                </option>
-              ))}
-            </select>
-            <button
-              className="primary"
-              disabled={busy || !resourceKey}
-              onClick={() => void lock()}
-            >
-              Lock
-            </button>
-          </div>
-        </>
-      )}
-
-      {error && <div className="auth-error">{error}</div>}
-
-      <div className="subhead">Active locks ({locks.length})</div>
-      {locks.length === 0 ? (
-        <div className="muted">Nothing is locked.</div>
-      ) : (
-        <ul className="member-list lock-list">
-          {locks.map((l) => {
-            const path = idToPath.get(shareResourceId(l));
-            const isOrg = sharePrincipalType(l) === "org";
-            const who = isOrg ? "Everyone" : memberName(sharePrincipalId(l));
-            const isMe = !isOrg && sharePrincipalId(l) === session?.user.id;
-            return (
-              <li key={l.id}>
-                <span className={`lock-glyph ${isOrg ? "all" : ""}`}>{LOCK_GLYPH}</span>
-                <span className="member-name" title={path ?? shareResourceId(l)}>
-                  {path ? path.replace(/\.md$/i, "") : "(unknown item)"}
-                </span>
-                <span className="member-role">
-                  {who}
-                  {isMe ? " (you)" : ""}
-                </span>
-                {canManage && (
-                  <button
-                    className="link-btn danger"
-                    disabled={busy}
-                    onClick={() => void unlock(l.id)}
-                  >
-                    Unlock
-                  </button>
-                )}
-              </li>
-            );
-          })}
-        </ul>
       )}
     </>
   );

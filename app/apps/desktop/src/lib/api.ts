@@ -98,6 +98,21 @@ export interface Share {
 
 export type Permission = "view" | "edit";
 
+/** One member's effective access to a resource, as resolved server-side. */
+export interface ResolvedMemberAccess {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  role: string;
+  permission: "edit" | "view" | "none";
+  /** True when a lock reduced an otherwise-`edit` member down to `view`. */
+  capped: boolean;
+}
+
+export interface AccessResolution {
+  members: ResolvedMemberAccess[];
+}
+
 /** An MCP access token (metadata only; the plaintext is shown once at creation). */
 export interface McpTokenRow {
   id: string;
@@ -568,6 +583,18 @@ export class ApiClient {
 
   async revokeShare(shareId: string): Promise<void> {
     await this.request<unknown>("DELETE", `/api/shares/${encodeURIComponent(shareId)}`);
+  }
+
+  /** Resolve every member's effective access to a resource (the "who can access"
+   *  view). Same manage-gate as {@link listShares}. */
+  async resolveAccess(
+    resourceType: "folder" | "file",
+    resourceId: string,
+  ): Promise<AccessResolution> {
+    const { data } = await this.request<AccessResolution>("GET", "/api/resolve-access", {
+      query: { resourceType, resourceId },
+    });
+    return { members: data.members ?? [] };
   }
 
   /** All locks in a vault (readable by any workspace member — drives lock badges). */

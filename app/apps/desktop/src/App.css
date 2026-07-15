@@ -617,7 +617,8 @@ button.primary.hero:hover:not(:disabled) {
 .filetree-selectbar {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
   padding: var(--sp-1) var(--sp-2) var(--sp-1) calc(var(--sp-3) + var(--sp-2));
   min-height: 30px;
   border-bottom: 1px solid var(--border);
@@ -657,44 +658,61 @@ button.primary.hero:hover:not(:disabled) {
   font-size: var(--fs-sm);
   color: var(--text-tertiary);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .selbar-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
+  gap: 2px;
 }
-.selbar-btn {
+/* Compact icon actions — same glyph language as the header tools, so three of
+   them fit a narrow sidebar without the text buttons colliding with the count. */
+.selbar-icon {
   flex: 0 0 auto;
-  height: 24px;
-  padding: 0 var(--sp-2);
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
+  color: var(--text-tertiary);
   cursor: pointer;
   transition:
     background var(--t-fast) var(--ease),
-    color var(--t-fast) var(--ease),
-    border-color var(--t-fast) var(--ease);
+    color var(--t-fast) var(--ease);
 }
-.selbar-btn:hover:not(:disabled) {
+.selbar-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.selbar-icon:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
-.selbar-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
+.selbar-icon:active {
+  background: var(--bg-active);
 }
-.selbar-btn.danger {
-  color: var(--danger, #e5484d);
-  border-color: color-mix(in srgb, var(--danger, #e5484d) 40%, var(--border));
+.selbar-icon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
-.selbar-btn.danger:hover:not(:disabled) {
+.selbar-icon.danger:hover {
   background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent);
   color: var(--danger, #e5484d);
+}
+/* Armed = one more click deletes; make the trash unmistakably hot. */
+.selbar-icon.danger.armed {
+  background: var(--danger, #e5484d);
+  color: #fff;
+}
+.selbar-icon.danger.armed:hover {
+  background: var(--danger, #e5484d);
+  color: #fff;
 }
 
 /* Per-row checkbox shown only in select mode (leads the row, before the glyph). */
@@ -1793,6 +1811,434 @@ button.primary.hero:hover:not(:disabled) {
 .lock-glyph.all {
   background: var(--warning-soft);
   color: var(--warning);
+}
+
+/* ============================================================
+   Access panel (the locker) — unified structural view + who-can-access.
+   All colors via tokens so light/dark come for free.
+   ============================================================ */
+.access-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.access-intro {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+.access-intro strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.access-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.access-listlabel,
+.access-seclabel {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  margin: 0 0 var(--sp-2);
+}
+
+/* --- master list --- */
+.access-master {
+  background: var(--bg-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-3);
+  max-height: 264px;
+  overflow-y: auto;
+}
+.access-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.access-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+.access-row:hover {
+  background: var(--bg-hover);
+}
+.access-row.sel {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.access-glyph {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  display: inline-flex;
+}
+.access-row.sel .access-glyph {
+  color: var(--accent);
+}
+.access-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+.access-rname {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.access-rright {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+/* status badge (pill) */
+.access-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 3px 9px 3px 7px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.access-badge svg {
+  width: 11px;
+  height: 11px;
+}
+.access-badge.open {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.access-badge.ro {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+/* affected-people avatar stack */
+.access-avstack {
+  display: inline-flex;
+}
+.access-av-wrap {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.access-avstack .access-av-wrap {
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--bg-subtle);
+}
+.access-row.sel .access-avstack .access-av-wrap {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.access-av-wrap .avatar {
+  width: 22px;
+  height: 22px;
+}
+.access-av-wrap.locked {
+  position: relative;
+}
+.access-av-wrap.locked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--bg-app) 45%, transparent);
+}
+
+/* --- detail --- */
+.access-detail {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-5);
+}
+.access-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
+  text-align: center;
+  color: var(--text-tertiary);
+}
+.access-empty p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  max-width: 34ch;
+}
+.access-empty-glyph {
+  width: 34px;
+  height: 34px;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+.access-empty-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+.access-crumb {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  min-height: 14px;
+}
+.access-dtitle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 2px 0 var(--sp-3);
+}
+.access-tglyph {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.access-tglyph svg {
+  width: 100%;
+  height: 100%;
+}
+.access-dtitle h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.access-banner {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-4);
+}
+.access-banner strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.access-bico {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+.access-jump {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* segmented tri-state */
+.access-seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-1);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-1);
+  margin-bottom: var(--sp-5);
+}
+.access-segbtn {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--radius-md);
+  padding: var(--sp-3) var(--sp-3);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition:
+    background var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+.access-segbtn:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+.access-st-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.access-st-top svg {
+  width: 14px;
+  height: 14px;
+}
+.access-st-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  line-height: 1.35;
+}
+.access-segbtn.active {
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+.access-segbtn.active[data-mode="open"] {
+  box-shadow:
+    inset 0 0 0 1.5px var(--success),
+    var(--shadow-sm);
+}
+.access-segbtn.active[data-mode="open"] .access-st-top {
+  color: var(--success);
+}
+.access-segbtn.active[data-mode="readonly"] {
+  box-shadow:
+    inset 0 0 0 1.5px var(--warning),
+    var(--shadow-sm);
+}
+.access-segbtn.active[data-mode="readonly"] .access-st-top {
+  color: var(--warning);
+}
+.access-segbtn:disabled {
+  cursor: default;
+}
+.access-segbtn.soon {
+  opacity: 0.6;
+}
+.access-soon-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  margin-left: 2px;
+}
+
+/* who-can-access list */
+.access-people {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.access-prow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-1);
+  border-radius: var(--radius-md);
+}
+.access-prow:hover {
+  background: var(--bg-subtle);
+}
+.access-prow.ai {
+  background: var(--accent-soft);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.access-prow.ai:hover {
+  background: var(--accent-soft-hover);
+}
+.access-av-wrap.ai {
+  background: var(--accent-gradient);
+  color: var(--text-on-accent);
+}
+.access-av-wrap.ai svg {
+  width: 13px;
+  height: 13px;
+}
+.access-pmain {
+  flex: 1;
+  min-width: 0;
+}
+.access-pname {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.access-you {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+.access-prole {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.access-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.access-tag.ai {
+  color: var(--accent);
+  background: var(--bg-surface);
+}
+.access-lv {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.access-lv.can {
+  color: var(--success);
+}
+.access-lv.view {
+  color: var(--warning);
+}
+.access-lv.no {
+  color: var(--text-tertiary);
+}
+.access-choice {
+  width: auto !important;
+  flex-shrink: 0;
+  font-size: var(--fs-sm) !important;
+  padding: var(--sp-1) var(--sp-2) !important;
 }
 
 .theme-toggle {

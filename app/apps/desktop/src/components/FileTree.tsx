@@ -98,6 +98,21 @@ const ICON_CHECK = (
     <path d="m5 12 5 5 9-11" />
   </TreeSvg>
 );
+/* Bulk-action glyphs: open padlock / trash can (closed padlock is ICON_LOCK). */
+const ICON_UNLOCK = (
+  <TreeSvg>
+    <rect x="4" y="11" width="16" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 7.5-1.9" />
+  </TreeSvg>
+);
+const ICON_TRASH = (
+  <TreeSvg>
+    <path d="M4 7h16" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+    <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+  </TreeSvg>
+);
 
 export function FileTree() {
   const tree = useStore((s) => s.tree);
@@ -512,47 +527,41 @@ export function FileTree() {
           >
             {allSelected && ICON_CHECK}
           </button>
-          <span className="selbar-count">
-            {selected.size} selected
-          </span>
-          <div className="selbar-actions">
-            {canManage && syncEnabled && (
-              <>
-                <button
-                  className="selbar-btn"
-                  disabled={selected.size === 0}
-                  onClick={() => void bulkLock()}
-                  title="Lock the selected items for everyone"
-                >
-                  Lock
-                </button>
-                <button
-                  className="selbar-btn"
-                  disabled={selected.size === 0}
-                  onClick={() => void bulkUnlock()}
-                  title="Unlock the selected items"
-                >
-                  Unlock
-                </button>
-              </>
-            )}
-            {confirmDelete ? (
+          <span className="selbar-count">{selected.size} selected</span>
+          {selected.size > 0 && (
+            <div className="selbar-actions">
+              {canManage && syncEnabled && (
+                <>
+                  <button
+                    className="selbar-icon"
+                    onClick={() => void bulkLock()}
+                    title="Lock selected"
+                    aria-label="Lock selected"
+                  >
+                    {ICON_LOCK}
+                  </button>
+                  <button
+                    className="selbar-icon"
+                    onClick={() => void bulkUnlock()}
+                    title="Unlock selected"
+                    aria-label="Unlock selected"
+                  >
+                    {ICON_UNLOCK}
+                  </button>
+                </>
+              )}
               <button
-                className="selbar-btn danger"
-                onClick={() => void bulkDelete()}
+                className={`selbar-icon danger${confirmDelete ? " armed" : ""}`}
+                onClick={() =>
+                  confirmDelete ? void bulkDelete() : setConfirmDelete(true)
+                }
+                title={confirmDelete ? `Delete ${selected.size}? Click to confirm` : "Delete selected"}
+                aria-label={confirmDelete ? "Confirm delete" : "Delete selected"}
               >
-                Delete {selected.size}?
+                {ICON_TRASH}
               </button>
-            ) : (
-              <button
-                className="selbar-btn danger"
-                disabled={selected.size === 0}
-                onClick={() => setConfirmDelete(true)}
-              >
-                Delete
-              </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
       {data.length === 0 ? (

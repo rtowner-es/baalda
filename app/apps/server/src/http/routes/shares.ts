@@ -6,6 +6,10 @@ import {
   orgRole,
   resolveResource,
 } from "../../permissions/lookup.js";
+import {
+  buildAccessContext,
+  resolveAccessForUser,
+} from "../../permissions/resolver.js";
 import { getSession } from "../session.js";
 
 /**
@@ -178,6 +182,52 @@ export function createShareRoutes(deps: ShareDeps): Hono {
       [resourceType, resourceId],
     );
     return c.json({ shares: rows });
+  });
+
+  // Resolve WHO can access one resource: every workspace member with their
+  // effective permission (role + shares + inherited folder shares, capped by
+  // locks) and its source. Powers the "who can access" view. Same canManage
+  // gate as listing shares.
+  app.get("/resolve-access", async (c) => {
+    const session = await getSession(c);
+    if (!session) return c.json({ error: "Authentication required" }, 401);
+    const resourceType = c.req.query("resourceType");
+    const resourceId = c.req.query("resourceId");
+    if ((resourceType !== "folder" && resourceType !== "file") || !resourceId) {
+      return c.json({ error: "resourceType and resourceId query params required" }, 400);
+    }
+    const gate = await canManage(session.userId, resourceType, resourceId);
+    if (!gate.ok) return c.json({ error: gate.error }, (gate.status ?? 403) as 403 | 404);
+
+    const ctx = await buildAccessContext(resourceType, resourceId);
+    if (!ctx) return c.json({ error: "Unknown resource" }, 404);
+
+    const { rows: memberRows } = await pool.query<{
+      user_id: string;
+      role: string;
+      name: string | null;
+      email: string | null;
+    }>(
+      `SELECT m."userId" AS user_id, m.role, u.name, u.email
+         FROM member m JOIN "user" u ON u.id = m."userId"
+        WHERE m."organizationId" = $1`,
+      [ctx.organizationId],
+    );
+
+    const members = await Promise.all(
+      memberRows.map(async (m) => {
+        const { permission, capped } = await resolveAccessForUser(ctx, m.user_id, m.role);
+        return {
+          userId: m.user_id,
+          name: m.name,
+          email: m.email,
+          role: m.role,
+          permission,
+          capped,
+        };
+      }),
+    );
+    return c.json({ members });
   });
 
   // Revoke a share, then instant-kill affected live sockets.
