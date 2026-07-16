@@ -4,6 +4,7 @@
 
 use crate::attachments::{self, AttachmentMeta};
 use crate::error::{AppError, AppResult};
+use crate::import_export::{self, ImportSummary};
 use crate::index::{Backlink, Index, NoteMeta, NoteTitle, ResolvedLink, SearchResult, YjsState};
 use crate::notefile;
 use crate::state::AppState;
@@ -245,6 +246,86 @@ pub async fn pick_folder(app: AppHandle) -> AppResult<Option<String>> {
         .into_path()
         .map_err(|e| AppError::new(format!("invalid folder: {e}")))?;
     Ok(Some(path.to_string_lossy().to_string()))
+}
+
+/// Native multi-file picker. Returns the chosen absolute paths, or None if the
+/// dialog was cancelled.
+#[tauri::command]
+pub async fn pick_files(app: AppHandle) -> AppResult<Option<Vec<String>>> {
+    let Some(files) = app.dialog().file().blocking_pick_files() else {
+        return Ok(None);
+    };
+    let paths = files
+        .into_iter()
+        .filter_map(|f| f.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+    Ok(Some(paths))
+}
+
+/// Native save-file dialog (used for single-note export). Returns the chosen
+/// absolute path, or None if cancelled.
+#[tauri::command]
+pub async fn save_file(app: AppHandle, default_name: String) -> AppResult<Option<String>> {
+    let Some(file) = app
+        .dialog()
+        .file()
+        .set_file_name(&default_name)
+        .blocking_save_file()
+    else {
+        return Ok(None);
+    };
+    let path = file
+        .into_path()
+        .map_err(|e| AppError::new(format!("invalid path: {e}")))?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
+/// Import external files/folders into the vault under `dest` (vault-relative;
+/// "" = root). Copies bytes, then indexes any new `.md` notes synchronously so
+/// search/backlinks are fresh (the watcher echo also refreshes the sidebar).
+#[tauri::command]
+pub async fn import_paths(
+    state: State<'_, AppState>,
+    dest: String,
+    sources: Vec<String>,
+) -> AppResult<ImportSummary> {
+    let (vault, index) = require_vault(&state)?;
+    let summary = import_export::import_paths(&vault, &dest, &sources);
+    // Index every new note under the imported top-level items.
+    let guard = index.lock().unwrap();
+    for rel in &summary.imported {
+        if let Ok(abs) = vault::resolve_in_vault(&vault, rel) {
+            index_md_tree(&guard, &vault, &abs);
+        }
+    }
+    Ok(summary)
+}
+
+/// Recursively index every `.md` file at/under `abs` (best-effort).
+fn index_md_tree(index: &Index, vault: &Path, abs: &Path) {
+    if abs.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(abs) {
+            for entry in entries.flatten() {
+                index_md_tree(index, vault, &entry.path());
+            }
+        }
+    } else if abs.extension().and_then(|e| e.to_str()) == Some("md") {
+        let _ = index.index_note(vault, abs);
+    }
+}
+
+/// Export a note, folder subtree, or the whole vault (`rel == ""`) to `dest`.
+/// For a directory source, `dest` is a destination directory; for a single
+/// file, `dest` is the exact target path from the Save dialog.
+#[tauri::command]
+pub async fn export_path(
+    state: State<'_, AppState>,
+    rel: String,
+    dest: String,
+) -> AppResult<()> {
+    let (vault, _) = require_vault(&state)?;
+    import_export::export_path(&vault, &rel, &dest)
 }
 
 /// Open a workspace's folder: ensure it exists, repoint `<root>/current` at it,

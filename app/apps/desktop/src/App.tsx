@@ -207,20 +207,31 @@ export default function App() {
   useEffect(() => {
     let unlistenFile: (() => void) | undefined;
     let unlistenVault: (() => void) | undefined;
+    // Coalesce sidebar refreshes: a bulk change (e.g. importing a folder) emits
+    // many `file-changed` batches in quick succession; refreshing the tree on
+    // each one re-renders the whole sidebar repeatedly and flickers hover state.
+    // Debounce so a burst settles into a single refresh.
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void useStore.getState().refreshTree();
+        void useStore.getState().refreshTitles();
+        void useStore.getState().refreshBacklinks();
+      }, 120);
+    };
     (async () => {
       unlistenFile = await ipc.onFileChanged(async (e) => {
         // Attachments are content-synced, not indexed/CRDT-bridged. A change
         // under `attachments/` triggers a debounced two-way blob reconcile.
         if (e.path === "attachments" || e.path.startsWith("attachments/")) {
           syncManager.handleAttachmentChanged();
-          await useStore.getState().refreshTree();
+          scheduleRefresh();
           return;
         }
 
-        // Any change refreshes the tree + titles (cheap, keeps sidebar live).
-        await useStore.getState().refreshTree();
-        await useStore.getState().refreshTitles();
-
+        // Open-note reconciliation runs immediately (per event); the sidebar
+        // refresh is coalesced via scheduleRefresh below.
         const open = useStore.getState().openNote;
         if (open && e.path === open.path) {
           if (e.kind === "removed") {
@@ -231,8 +242,9 @@ export default function App() {
             bridgeManager.handleFileChanged(e.path);
           }
         }
-        // Backlinks may have changed as a result of the edit being re-indexed.
-        await useStore.getState().refreshBacklinks();
+
+        // Refresh tree + titles + backlinks (coalesced for bursts).
+        scheduleRefresh();
       });
       unlistenVault = await ipc.onVaultOpened((v) => {
         useStore.getState().setVault(v);
@@ -241,6 +253,7 @@ export default function App() {
     return () => {
       unlistenFile?.();
       unlistenVault?.();
+      if (refreshTimer) clearTimeout(refreshTimer);
     };
   }, []);
 

@@ -18,8 +18,9 @@ pub struct TreeNode {
     pub children: Option<Vec<TreeNode>>,
 }
 
-/// Walk the vault into a nested tree. Skips dotfolders, `.git`, `.context/`,
-/// and non-markdown files (folders are always kept so the user can organize).
+/// Walk the vault into a nested tree. Skips dotfolders, `.git`, and `.context/`
+/// (and our `.*.tmp` write scratch, which are dotfiles). Every other file is
+/// surfaced regardless of type, so imported content of any format is visible.
 pub fn list_tree(vault: &Path) -> AppResult<TreeNode> {
     let name = vault
         .file_name()
@@ -70,11 +71,6 @@ fn walk_dir(dir: &Path, rel_prefix: &str) -> AppResult<Vec<TreeNode>> {
                 children: Some(children),
             });
         } else if file_type.is_file() {
-            // Only surface markdown notes and HTML pages (rendered in-app).
-            let lower = name.to_lowercase();
-            if !(lower.ends_with(".md") || lower.ends_with(".html") || lower.ends_with(".htm")) {
-                continue;
-            }
             files.push(TreeNode {
                 id: rel.clone(),
                 name,
@@ -108,17 +104,17 @@ mod tests {
         fs::create_dir_all(root.join("Notes/Sub")).unwrap();
         fs::write(root.join("Notes/a.md"), b"# A").unwrap();
         fs::write(root.join("Notes/Sub/b.md"), b"# B").unwrap();
-        fs::write(root.join("ignored.txt"), b"nope").unwrap();
+        fs::write(root.join("script.js"), b"code").unwrap();
 
         let tree = list_tree(root).unwrap();
         let children = tree.children.unwrap();
-        // Only "Notes" dir should appear (not .context, .git, or ignored.txt).
-        assert_eq!(children.len(), 1);
-        assert_eq!(children[0].name, "Notes");
+        // ".context"/".git" are hidden; "Notes" dir + "script.js" file surface
+        // (all file types are shown now, folders first then files).
+        let names: Vec<&str> = children.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, vec!["Notes", "script.js"]);
 
         let notes = children[0].children.as_ref().unwrap();
-        // "Sub" dir + "a.md" (the .txt is filtered).
-        let names: Vec<&str> = notes.iter().map(|n| n.name.as_str()).collect();
-        assert_eq!(names, vec!["Sub", "a.md"]);
+        let inner: Vec<&str> = notes.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(inner, vec!["Sub", "a.md"]);
     }
 }

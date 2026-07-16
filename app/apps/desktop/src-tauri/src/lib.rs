@@ -5,6 +5,7 @@
 pub mod attachments;
 mod commands;
 mod error;
+pub mod import_export;
 pub mod index;
 pub mod keychain;
 pub mod notefile;
@@ -60,6 +61,10 @@ pub fn run() {
             commands::set_workspace_root,
             commands::pick_workspace_root,
             commands::pick_folder,
+            commands::pick_files,
+            commands::save_file,
+            commands::import_paths,
+            commands::export_path,
             commands::open_workspace_folder,
             commands::get_vault_config,
             commands::set_vault_config,

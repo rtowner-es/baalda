@@ -79,6 +79,16 @@ export interface AttachmentMeta {
   sha256: string;
 }
 
+/** Outcome of an import (mirrors the Rust `ImportSummary`). */
+export interface ImportSummary {
+  /** Vault-relative paths of the created top-level items. */
+  imported: string[];
+  /** Total files copied (including nested + attachments). */
+  files: number;
+  /** Files/dirs skipped (ignored names, unreadable sources, …). */
+  skipped: number;
+}
+
 // ---- Vault ----------------------------------------------------------------
 
 export const pickVault = () => invoke<VaultInfo | null>("pick_vault");
@@ -97,6 +107,11 @@ export const setWorkspaceRoot = (path: string) =>
 export const pickWorkspaceRoot = () => invoke<string | null>("pick_workspace_root");
 /** Native folder picker that only returns the path (does not open it). */
 export const pickFolder = () => invoke<string | null>("pick_folder");
+/** Native multi-file picker; returns chosen absolute paths (null if cancelled). */
+export const pickFiles = () => invoke<string[] | null>("pick_files");
+/** Native save-file dialog; returns the chosen absolute path (null if cancelled). */
+export const saveFile = (defaultName: string) =>
+  invoke<string | null>("save_file", { defaultName });
 /** Ensure `path` exists, repoint `<root>/current` to it, and open it as vault. */
 export const openWorkspaceFolder = (path: string) =>
   invoke<VaultInfo>("open_workspace_folder", { path });
@@ -114,6 +129,13 @@ export const createFolder = (parent: string, name: string) =>
 export const renamePath = (from: string, to: string) =>
   invoke<string>("rename_path", { from, to });
 export const deletePath = (path: string) => invoke<void>("delete_path", { path });
+
+/** Import external files/folders (absolute host paths) into `dest` (vault-relative). */
+export const importPaths = (dest: string, sources: string[]) =>
+  invoke<ImportSummary>("import_paths", { dest, sources });
+/** Export a note, folder subtree, or the whole vault (`rel === ""`) to `dest`. */
+export const exportPath = (rel: string, dest: string) =>
+  invoke<void>("export_path", { rel, dest });
 
 // ---- Queries --------------------------------------------------------------
 

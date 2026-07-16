@@ -6,6 +6,7 @@ import {
   type NodeRendererProps,
   type TreeApi,
 } from "react-arborist";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { TreeNode } from "../lib/ipc";
 import * as ipc from "../lib/ipc";
 import { ITEM_COLORS, itemColorValue } from "../lib/appearance";
@@ -51,6 +52,19 @@ function parentDir(path: string): string {
 
 function basename(path: string): string {
   return path.split("/").pop() ?? path;
+}
+
+/** Files the in-app editor can render: markdown notes and HTML pages. */
+function isOpenablePath(path: string): boolean {
+  return /\.(md|html?)$/i.test(path);
+}
+
+/** Resolve a client (CSS px) point to the vault-relative dir under it, using the
+ *  `data-tree-dir` attribute each tree row carries. Falls back to the vault root. */
+function dirAtClientPoint(x: number, y: number): string {
+  const el = document.elementFromPoint(x, y);
+  const row = el?.closest("[data-tree-dir]") as HTMLElement | null;
+  return row?.dataset.treeDir ?? "";
 }
 
 interface MenuState {
@@ -127,6 +141,13 @@ export function FileTree() {
   const treeRef = useRef<TreeApi<TreeNode> | null>(null);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
+  // True while an OS drag hovers the tree, for the drop-target highlight.
+  const [dropActive, setDropActive] = useState(false);
+  // Transient status pill shown after an import (from the menu or a drop).
+  const [importStatus, setImportStatus] = useState<
+    { text: string; tone: "success" | "error" | "neutral" } | null
+  >(null);
+  const importStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Multi-select: a mode toggle + the set of picked paths. Kept local to the
   // tree (react-arborist's own selection is left alone) so the bulk-action bar
   // only exists while selecting and doesn't crowd the normal browsing UI.
@@ -279,12 +300,121 @@ export function FileTree() {
   useEffect(() => {
     const close = () => setMenu(null);
     window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
+    return () => {
+      window.removeEventListener("click", close);
+      if (importStatusTimer.current) clearTimeout(importStatusTimer.current);
+    };
   }, []);
 
   async function refreshAll() {
     await useStore.getState().refreshTree();
     await useStore.getState().refreshTitles();
+  }
+
+  /** Flash a short-lived status pill (auto-dismisses). */
+  function flashStatus(text: string, tone: "success" | "error" | "neutral" = "success") {
+    setImportStatus({ text, tone });
+    if (importStatusTimer.current) clearTimeout(importStatusTimer.current);
+    importStatusTimer.current = setTimeout(() => setImportStatus(null), 4500);
+  }
+
+  /** Announce an import outcome: green on success, neutral if nothing landed. */
+  function announceImport(s: ipc.ImportSummary) {
+    const files =
+      s.files > 0 ? `Imported ${s.files} file${s.files === 1 ? "" : "s"}` : "Nothing imported";
+    const text = s.skipped > 0 ? `${files} · ${s.skipped} skipped` : files;
+    flashStatus(text, s.files > 0 ? "success" : "neutral");
+  }
+
+  // Import OS files/folders dropped onto the sidebar. Tauri intercepts the OS
+  // drag-drop (the webview never sees an HTML5 drop) and hands us absolute
+  // paths + a physical cursor position; we scope it to the tree and route the
+  // drop into the folder under the pointer (or the vault root).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    const insideTree = (px: number, py: number): { x: number; y: number } | null => {
+      const scale = window.devicePixelRatio || 1;
+      const x = px / scale;
+      const y = py / scale;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return null;
+      return { x, y };
+    };
+    void (async () => {
+      const un = await getCurrentWebview().onDragDropEvent(async (event) => {
+        const p = event.payload;
+        if (p.type === "enter" || p.type === "over") {
+          setDropActive(insideTree(p.position.x, p.position.y) !== null);
+        } else if (p.type === "leave") {
+          setDropActive(false);
+        } else if (p.type === "drop") {
+          setDropActive(false);
+          const pt = insideTree(p.position.x, p.position.y);
+          if (!pt || !p.paths?.length) return; // dropped outside the tree
+          try {
+            const summary = await ipc.importPaths(dirAtClientPoint(pt.x, pt.y), p.paths);
+            await refreshAll();
+            announceImport(summary);
+          } catch (e) {
+            console.error("import (drop) failed", e);
+            flashStatus("Import failed", "error");
+          }
+        }
+      });
+      if (cancelled) un();
+      else unlisten = un;
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Pick files and import them into `dir` (vault-relative; "" = root). */
+  async function importFilesInto(dir: string) {
+    setMenu(null);
+    try {
+      const sources = await ipc.pickFiles();
+      if (!sources || sources.length === 0) return;
+      const summary = await ipc.importPaths(dir, sources);
+      await refreshAll();
+      announceImport(summary);
+    } catch (e) {
+      console.error("import files failed", e);
+      flashStatus("Import failed", "error");
+    }
+  }
+
+  /** Pick a folder and import it into `dir`. */
+  async function importFolderInto(dir: string) {
+    setMenu(null);
+    try {
+      const src = await ipc.pickFolder();
+      if (!src) return;
+      const summary = await ipc.importPaths(dir, [src]);
+      await refreshAll();
+      announceImport(summary);
+    } catch (e) {
+      console.error("import folder failed", e);
+      flashStatus("Import failed", "error");
+    }
+  }
+
+  /** Export a node: a folder → chosen destination dir; a note → Save dialog. */
+  async function exportNode(node: NodeApi<TreeNode>) {
+    setMenu(null);
+    try {
+      const dest = node.data.isDir
+        ? await ipc.pickFolder()
+        : await ipc.saveFile(basename(node.data.path));
+      if (!dest) return;
+      await ipc.exportPath(node.data.path, dest);
+    } catch (e) {
+      console.error("export failed", e);
+    }
   }
 
   const onActivate = (node: NodeApi<TreeNode>) => {
@@ -295,7 +425,11 @@ export function FileTree() {
       return;
     }
     if (!node.data.isDir) {
-      void useStore.getState().openNoteByPath(node.data.path);
+      // Only notes/pages render in-app; other file types are shown in the tree
+      // but aren't opened in the editor (avoids feeding binaries to it).
+      if (isOpenablePath(node.data.path)) {
+        void useStore.getState().openNoteByPath(node.data.path);
+      }
     }
   };
 
@@ -304,12 +438,13 @@ export function FileTree() {
     const dir = parentDir(oldPath);
     let newName = name.trim();
     if (!newName || newName === basename(oldPath)) return;
-    // Re-attach the file's real extension (the rename input hides it).
+    // Re-attach the file's real extension. Notes/pages hide it in the rename
+    // input; other file types show it, so only append when it's missing.
     if (!node.data.isDir) {
-      const ext = isHtmlPath(oldPath)
-        ? (oldPath.match(/\.html?$/i)?.[0] ?? ".html")
-        : ".md";
-      if (!newName.toLowerCase().endsWith(ext.toLowerCase())) newName = `${newName}${ext}`;
+      const ext = basename(oldPath).match(/\.[^./\\]+$/)?.[0] ?? "";
+      if (ext && !newName.toLowerCase().endsWith(ext.toLowerCase())) {
+        newName = `${newName}${ext}`;
+      }
     }
     const newPath = dir ? `${dir}/${newName}` : newName;
     if (newPath === oldPath) return;
@@ -466,7 +601,7 @@ export function FileTree() {
   }
 
   return (
-    <div className="filetree" ref={containerRef}>
+    <div className={`filetree${dropActive ? " drop-active" : ""}`} ref={containerRef}>
       <div className="filetree-head">
         <span className="section-label">Notes</span>
         <div className="filetree-actions">
@@ -601,6 +736,11 @@ export function FileTree() {
         <ul className="context-menu" style={{ left: menu.x, top: menu.y }}>
           <li onClick={() => createUniqueNote(menuDir)}>New note</li>
           <li onClick={() => createUniqueFolder(menuDir)}>New folder</li>
+          <li className="menu-sep-item" onClick={() => void importFilesInto(menuDir)}>
+            Import files…
+          </li>
+          <li onClick={() => void importFolderInto(menuDir)}>Import folder…</li>
+          {menu.node && <li onClick={() => void exportNode(menu.node!)}>Export…</li>}
           {menu.node && <li onClick={() => menu.node!.edit()}>Rename</li>}
           {(itemOrder[menuDir]?.length ?? 0) > 0 && (
             <li
@@ -665,6 +805,12 @@ export function FileTree() {
 
       {shareTarget && (
         <ShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
+      )}
+
+      {importStatus && (
+        <div className={`filetree-status ${importStatus.tone}`} role="status">
+          {importStatus.text}
+        </div>
       )}
     </div>
   );
@@ -764,6 +910,7 @@ function Node({
     <div
       ref={dragHandle}
       style={{ ...style, paddingLeft: indent + 20 }}
+      data-tree-dir={isDir ? node.data.path : parentDir(node.data.path)}
       className={`tree-row${isSelected ? " selected" : ""}${isDir ? " is-dir" : ""}${
         node.willReceiveDrop ? " drop-target" : ""
       }${node.isDragging ? " dragging" : ""}${checked ? " checked" : ""}`}
