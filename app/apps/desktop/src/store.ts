@@ -326,7 +326,9 @@ export const useStore = create<AppStore>((set, get) => ({
     // Only markdown notes sync — HTML pages are local files rendered in-app.
     if (get().syncEnabled && path.toLowerCase().endsWith(".md")) {
       try {
-        await syncManager.registry.registerNote(path, title);
+        // Pass the local index doc_id so the server adopts the SAME id — the
+        // editor's bridge and the sync provider must key the note identically.
+        await syncManager.registry.registerNote(path, title, meta?.id);
       } catch (e) {
         console.warn("[sync] registerNote failed", e);
       }

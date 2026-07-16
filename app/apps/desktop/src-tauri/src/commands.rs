@@ -23,9 +23,28 @@ pub struct VaultInfo {
     pub name: String,
 }
 
+/// One entry in the "recently opened vaults" list surfaced on the welcome
+/// screen. `opened_at` is epoch-millis of the last open (0 if unknown, e.g. a
+/// migrated legacy `last_vault`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentVault {
+    pub path: String,
+    pub name: String,
+    pub opened_at: u64,
+}
+
+/// How many recent vaults we keep in config / show on the welcome screen.
+const RECENT_LIMIT: usize = 10;
+
 #[derive(Serialize, Deserialize, Default)]
 struct AppConfig {
+    /// Legacy single last-opened vault. Superseded by `recent_vaults`; kept so
+    /// old configs migrate cleanly and nothing else that reads it breaks.
     last_vault: Option<String>,
+    /// Most-recently-opened vaults, newest first (see `RecentVault`).
+    #[serde(default)]
+    recent_vaults: Vec<RecentVault>,
     /// Sync server base URL (spec 04 §7 — configurable; default in the TS layer).
     #[serde(default)]
     server_url: Option<String>,
@@ -74,6 +93,14 @@ fn write_config(app: &AppHandle, cfg: &AppConfig) -> AppResult<()> {
     Ok(())
 }
 
+fn now_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 fn vault_info(path: &Path) -> VaultInfo {
     VaultInfo {
         path: path.to_string_lossy().to_string(),
@@ -117,9 +144,21 @@ fn open_vault_inner(app: &AppHandle, state: &State<AppState>, path: PathBuf) -> 
     }
 
     let info = vault_info(&path);
-    // Preserve other config keys (e.g. server_url) when updating last_vault.
+    // Preserve other config keys (e.g. server_url) when updating recents.
     let mut cfg = read_config(app);
-    cfg.last_vault = Some(info.path.clone());
+    cfg.last_vault = Some(info.path.clone()); // kept for back-compat
+    // Move this vault to the front of the recents list (dedup by path), stamp
+    // the open time, and cap the list length.
+    cfg.recent_vaults.retain(|r| r.path != info.path);
+    cfg.recent_vaults.insert(
+        0,
+        RecentVault {
+            path: info.path.clone(),
+            name: info.name.clone(),
+            opened_at: now_ms(),
+        },
+    );
+    cfg.recent_vaults.truncate(RECENT_LIMIT);
     write_config(app, &cfg)?;
     app.emit("vault-opened", info.clone())?;
     Ok(info)
@@ -158,6 +197,72 @@ pub fn get_last_vault(app: AppHandle) -> AppResult<Option<VaultInfo>> {
         let path = PathBuf::from(p);
         path.is_dir().then(|| vault_info(&path))
     }))
+}
+
+/// Recently opened vaults, newest first, pruned to those that still exist on
+/// disk. Migrates a legacy `last_vault` into the list on first read.
+#[tauri::command]
+pub fn get_recent_vaults(app: AppHandle) -> AppResult<Vec<RecentVault>> {
+    let mut cfg = read_config(&app);
+
+    // One-time migration: fold a legacy single last_vault into the list.
+    if cfg.recent_vaults.is_empty() {
+        if let Some(p) = cfg.last_vault.clone() {
+            let path = PathBuf::from(&p);
+            if path.is_dir() {
+                cfg.recent_vaults.push(RecentVault {
+                    name: vault_info(&path).name,
+                    path: p,
+                    opened_at: 0,
+                });
+            }
+        }
+    }
+
+    // Drop entries whose folder has since been moved/deleted; persist if changed.
+    let before = cfg.recent_vaults.len();
+    cfg.recent_vaults.retain(|r| Path::new(&r.path).is_dir());
+    if cfg.recent_vaults.len() != before {
+        let _ = write_config(&app, &cfg);
+    }
+
+    Ok(cfg.recent_vaults)
+}
+
+/// Remove one vault from the recents list (welcome-screen "×").
+#[tauri::command]
+pub fn remove_recent_vault(app: AppHandle, path: String) -> AppResult<()> {
+    let mut cfg = read_config(&app);
+    cfg.recent_vaults.retain(|r| r.path != path);
+    if cfg.last_vault.as_deref() == Some(path.as_str()) {
+        cfg.last_vault = None;
+    }
+    write_config(&app, &cfg)
+}
+
+/// Create a brand-new empty vault folder `<parent>/<name>` and open it.
+#[tauri::command]
+pub async fn create_vault(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    parent: String,
+    name: String,
+) -> AppResult<VaultInfo> {
+    let name = name.trim();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.contains('/')
+        || name.contains('\\')
+    {
+        return Err(AppError::new("invalid vault name"));
+    }
+    let dir = PathBuf::from(&parent).join(name);
+    if dir.exists() {
+        return Err(AppError::new("a folder with that name already exists"));
+    }
+    std::fs::create_dir_all(&dir)?;
+    open_vault_inner(&app, &state, dir)
 }
 
 /// The configured sync server base URL, if the user has set one.
@@ -594,4 +699,12 @@ pub async fn write_binary_file(
 pub async fn list_attachments(state: State<'_, AppState>) -> AppResult<Vec<AttachmentMeta>> {
     let (vault, _) = require_vault(&state)?;
     attachments::list_attachments(&vault)
+}
+
+/// Read an arbitrary host file the user just dropped/picked (absolute path).
+/// Unlike `read_binary_file` this is NOT vault-scoped — the bytes are on their
+/// way into an attachment; the path came from a user drag-drop, not the tree.
+#[tauri::command]
+pub async fn read_external_file(path: String) -> AppResult<Vec<u8>> {
+    std::fs::read(&path).map_err(|e| AppError::new(format!("read external file failed: {e}")))
 }

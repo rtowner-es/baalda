@@ -1,7 +1,7 @@
 //! Recursive vault tree walk → nested JSON for the react-arborist sidebar.
 
 use crate::error::AppResult;
-use crate::vault::is_ignored_name;
+use crate::vault::{is_allowed_file, is_ignored_name};
 use serde::Serialize;
 use std::path::Path;
 
@@ -18,9 +18,10 @@ pub struct TreeNode {
     pub children: Option<Vec<TreeNode>>,
 }
 
-/// Walk the vault into a nested tree. Skips dotfolders, `.git`, and `.context/`
-/// (and our `.*.tmp` write scratch, which are dotfiles). Every other file is
-/// surfaced regardless of type, so imported content of any format is visible.
+/// Walk the vault into a nested tree. Skips dotfolders, `.git`, `.context/`,
+/// heavy build/dependency dirs (`node_modules`, …), and any file whose extension
+/// isn't on the allowlist (`ALLOWED_EXTS`) — so importing a real project folder
+/// surfaces only notes/images/PDFs, never source code or `node_modules` junk.
 pub fn list_tree(vault: &Path) -> AppResult<TreeNode> {
     let name = vault
         .file_name()
@@ -51,6 +52,13 @@ fn walk_dir(dir: &Path, rel_prefix: &str) -> AppResult<Vec<TreeNode>> {
         if is_ignored_name(&name) {
             continue;
         }
+        // The vault-root `attachments/` folder is the binary-sync store for
+        // images/PDFs embedded in notes — plumbing, not browsable content — so
+        // it's hidden from the sidebar (notes render their attachments inline).
+        // Only hidden at the root; a user's own nested "attachments" dir shows.
+        if rel_prefix.is_empty() && name == "attachments" && entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
         let rel = if rel_prefix.is_empty() {
             name.clone()
         } else {
@@ -71,6 +79,11 @@ fn walk_dir(dir: &Path, rel_prefix: &str) -> AppResult<Vec<TreeNode>> {
                 children: Some(children),
             });
         } else if file_type.is_file() {
+            // Only surface allowed file types (notes/images/PDFs); skip code,
+            // lockfiles, binaries, etc. so imports can't flood the vault.
+            if !is_allowed_file(&name) {
+                continue;
+            }
             files.push(TreeNode {
                 id: rel.clone(),
                 name,
@@ -105,16 +118,50 @@ mod tests {
         fs::write(root.join("Notes/a.md"), b"# A").unwrap();
         fs::write(root.join("Notes/Sub/b.md"), b"# B").unwrap();
         fs::write(root.join("script.js"), b"code").unwrap();
+        fs::write(root.join("diagram.png"), b"\x89PNG").unwrap();
+        // A stray node_modules must never be walked/surfaced.
+        fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        fs::write(root.join("node_modules/pkg/index.js"), b"x").unwrap();
 
         let tree = list_tree(root).unwrap();
         let children = tree.children.unwrap();
-        // ".context"/".git" are hidden; "Notes" dir + "script.js" file surface
-        // (all file types are shown now, folders first then files).
+        // ".context"/".git"/"node_modules" hidden; "script.js" filtered out by the
+        // extension allowlist; "Notes" dir + allowed "diagram.png" surface.
         let names: Vec<&str> = children.iter().map(|n| n.name.as_str()).collect();
-        assert_eq!(names, vec!["Notes", "script.js"]);
+        assert_eq!(names, vec!["Notes", "diagram.png"]);
 
         let notes = children[0].children.as_ref().unwrap();
         let inner: Vec<&str> = notes.iter().map(|n| n.name.as_str()).collect();
         assert_eq!(inner, vec!["Sub", "a.md"]);
+    }
+
+    #[test]
+    fn hides_root_attachments_folder_but_not_nested_ones() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        // Root-level attachments/ is the sync store — hidden from the sidebar.
+        fs::create_dir_all(root.join("attachments")).unwrap();
+        fs::write(root.join("attachments/a1b2.pdf"), b"%PDF").unwrap();
+        // A user's own nested "attachments" dir is normal content — kept.
+        fs::create_dir_all(root.join("Notes/attachments")).unwrap();
+        fs::write(root.join("Notes/attachments/keep.md"), b"# keep").unwrap();
+        fs::write(root.join("Notes/a.md"), b"# A").unwrap();
+
+        let tree = list_tree(root).unwrap();
+        let children = tree.children.unwrap();
+        let names: Vec<&str> = children.iter().map(|n| n.name.as_str()).collect();
+        assert!(!names.contains(&"attachments"), "root attachments/ must be hidden");
+        assert!(names.contains(&"Notes"));
+
+        // The nested attachments dir under Notes/ survives.
+        let notes_dir = children.iter().find(|n| n.name == "Notes").unwrap();
+        let inner: Vec<&str> = notes_dir
+            .children
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(inner.contains(&"attachments"));
     }
 }

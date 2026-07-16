@@ -14,6 +14,7 @@ import { BRAND_NAME } from "./lib/brand";
 import * as ipc from "./lib/ipc";
 import { syncManager } from "./lib/sync/docSession";
 import { checkForUpdate, installUpdate, useUpdateState } from "./lib/updater";
+import { previewKind } from "./lib/preview";
 import { useStore } from "./store";
 
 function RemovedBanner() {
@@ -170,6 +171,8 @@ function SyncIndicator() {
 export default function App() {
   const vault = useStore((s) => s.vault);
   const openNote = useStore((s) => s.openNote);
+  // An open image/PDF preview isn't a synced note — hide the save/sync chrome.
+  const isPreview = openNote != null && previewKind(openNote.path) != null;
   const [booting, setBooting] = useState(true);
   const [graphOpen, setGraphOpen] = useState(false);
 
@@ -365,8 +368,8 @@ export default function App() {
         <UpdateBanner />
         <header className="main-header">
           <span className="note-title">{openNote?.title ?? "No note open"}</span>
-          {openNote && <SaveIndicator />}
-          {openNote && <SyncIndicator />}
+          {openNote && !isPreview && <SaveIndicator />}
+          {openNote && !isPreview && <SyncIndicator />}
           <button
             className="icon-btn graph-btn"
             title="Graph view (⌘G)"

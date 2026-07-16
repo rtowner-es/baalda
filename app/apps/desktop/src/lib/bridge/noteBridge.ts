@@ -38,6 +38,12 @@ export class NoteBridge {
   private observedUpdates = 0;
   /** True once a recovery snapshot has been taken for a large diff. */
   private recoverySnapshotTaken = false;
+  /** True once this doc has held non-empty text in this session. Guards egest:
+   *  a doc that was "born empty" (never hydrated — e.g. a doc_id mismatch or an
+   *  empty server doc) must never write its emptiness over a file that still has
+   *  content. A genuine clear-all (editor or remote) sets this first, so real
+   *  deletions still egest. */
+  private everHadContent = false;
 
   private ingestTimer: number | null = null;
   private egestTimer: number | null = null;
@@ -83,6 +89,9 @@ export class NoteBridge {
     };
 
     this.onTextChange = (_evt, tr) => {
+      // Remember the doc has legitimately held content, so a later clear-all is
+      // recognised as a real deletion (and not blocked by the born-empty guard).
+      if (this.text.length > 0) this.everHadContent = true;
       // A change we applied from the file must not be written back (spec 03 §5.B).
       if (tr.origin === ORIGIN_DISK) return;
       this.scheduleEgest();
@@ -134,6 +143,7 @@ export class NoteBridge {
         for (const u of state.updates) Y.applyUpdate(this.doc, u, "persistence");
       }, "persistence");
       this.logLength = state.updateCount;
+      if (this.text.length > 0) this.everHadContent = true;
       this.subscribe();
       // Baseline the echo guard at the current content so an identical file
       // doesn't trigger a spurious ingest, but a genuine external change does.
@@ -271,6 +281,25 @@ export class NoteBridge {
   private async drainEgest(): Promise<void> {
     if (this.destroyed) return;
     const content = this.text.toString();
+    // Data-loss guard: a doc that has never held content this session is either
+    // un-hydrated or bound to the wrong doc_id. Writing its emptiness would wipe
+    // a file that still has real bytes on disk, so refuse (a genuine clear-all
+    // sets everHadContent first, so real deletions are unaffected). This closes
+    // the import/background-feed clobber that zeroed notes on disk.
+    if (content.length === 0 && !this.everHadContent) {
+      let current = "";
+      try {
+        current = await this.io.readFile(this._path);
+      } catch {
+        current = "";
+      }
+      if (current.length > 0) {
+        console.warn(
+          `[bridge] refusing to egest empty over non-empty file: ${this._path} (doc ${this.docId})`,
+        );
+        return;
+      }
+    }
     // Set the echo guard BEFORE writing so the watcher's ingest sees our bytes
     // and drops them (this is what closes the loop — spec 03 §5).
     this.lastWrittenHash = await this.hash(content);

@@ -27,6 +27,14 @@ import { buildTeam, colorForUser, demoConfig, mulberry32 } from "./config.js";
 
 const TOKEN_TTL = 12 * 60 * 60; // 12h so tokens outlast a long recording
 const FOCUS = process.env.DEMO_FOCUS ?? "";
+/** DEMO_SPREAD_ALL=1 → one teammate per file across ALL files (uneven), instead
+ *  of crowding a hot set. Great with the small --quick vault. */
+const SPREAD_ALL = process.env.DEMO_SPREAD_ALL === "1";
+/** DEMO_CROWD=1 → put DEMO_CROWD_N (default 10) teammates on ONE file and have
+ *  them collaboratively write + edit it in sequence (live typing you can watch). */
+const CROWD = process.env.DEMO_CROWD === "1";
+const CROWD_N = Number(process.env.DEMO_CROWD_N ?? "10");
+const CROWD_FILE = process.env.DEMO_CROWD_FILE ?? "";
 
 interface Member {
   id: string;
@@ -47,6 +55,7 @@ interface Client {
   pos: number;
   timer: ReturnType<typeof setInterval> | null;
   rand: () => number;
+  synced?: boolean;
 }
 
 const clients: Client[] = [];
@@ -110,7 +119,13 @@ function pickHotNotes(notes: NoteRow[], memberCount: number): NoteRow[] {
   return ranked.slice(0, wanted);
 }
 
-async function makeClient(vaultId: string, member: Member, note: NoteRow, seed: number): Promise<void> {
+async function makeClient(
+  vaultId: string,
+  member: Member,
+  note: NoteRow,
+  seed: number,
+  autoTick = true,
+): Promise<void> {
   const doc = new Y.Doc();
   const name = `vault:${vaultId}/note:${note.id}`;
   const provider = new HocuspocusProvider({
@@ -154,6 +169,8 @@ async function makeClient(vaultId: string, member: Member, note: NoteRow, seed: 
 
   provider.on("synced", () => {
     if (stopping) return;
+    client.synced = true;
+    if (!autoTick) return; // crowd/compose mode drives edits via the conductor
     client.pos = Math.floor(client.rand() * Math.max(1, doc.getText("content").length));
     client.timer = setInterval(() => tick(client), 1000 + Math.floor(client.rand() * 900));
   });
@@ -191,6 +208,83 @@ function tick(client: Client): void {
   }
 }
 
+// ---- Crowd / live-compose mode: N teammates writing + editing one doc ----
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Set a collapsed caret at char index `i` in the doc's content text. */
+function setCaret(client: Client, i: number): void {
+  const ytext = client.doc.getText("content");
+  const at = Math.max(0, Math.min(i, ytext.length));
+  const anchor = Y.createRelativePositionFromTypeIndex(ytext, at);
+  const head = Y.createRelativePositionFromTypeIndex(ytext, at);
+  client.provider.setAwarenessField("cursor", { anchor, head });
+  const line = ytext.toString().slice(0, at).split("\n").length;
+  client.provider.setAwarenessField("activity", { line, at: Date.now() });
+}
+
+/** Type `text` character-by-character at `start`, advancing the caret so the
+ *  keystrokes are visibly animated in the editor. */
+async function typeAt(client: Client, start: number, text: string): Promise<void> {
+  const ytext = client.doc.getText("content");
+  let pos = Math.min(start, ytext.length);
+  for (const ch of text) {
+    if (stopping) return;
+    ytext.insert(pos, ch);
+    pos += 1;
+    setCaret(client, pos);
+    await sleep(38 + Math.floor(client.rand() * 55)); // ~40-90ms/keystroke
+  }
+}
+
+const SENTENCES = [
+  "Let's align on the top priority for this week.",
+  "I pushed the draft — feedback welcome.",
+  "One risk: the timeline is tight for QA.",
+  "Agreed. I'll own the rollout checklist.",
+  "Numbers look good, up 12% week over week.",
+  "Can we move the review to Thursday?",
+  "Adding a note here for visibility.",
+  "Blocked on the API key — following up now.",
+  "Ship it once the tests are green.",
+  "Great work everyone, momentum is strong.",
+];
+const REPLACEMENTS = ["updated", "revised", "clarified", "confirmed", "adjusted", "refined"];
+
+/**
+ * The conductor: teammates take turns editing one shared doc IN SEQUENCE —
+ * mostly appending a sentence (typed live), occasionally editing an existing
+ * word — so you watch real collaborative writing and changes, not just cursors.
+ */
+async function runCompose(crowd: Client[]): Promise<void> {
+  // Wait until everyone has synced the doc.
+  for (let i = 0; i < 40 && crowd.some((c) => !c.synced); i++) await sleep(150);
+  let turn = 0;
+  while (!stopping) {
+    const client = crowd[turn % crowd.length];
+    const ytext = client.doc.getText("content");
+    const text = ytext.toString();
+    // ~30% of the time make a CHANGE to existing text; otherwise write new.
+    const words = [...text.matchAll(/\b[A-Za-z]{4,}\b/g)];
+    if (words.length > 6 && client.rand() < 0.3) {
+      const w = words[Math.floor(client.rand() * words.length)];
+      const start = w.index ?? 0;
+      setCaret(client, start);
+      await sleep(250);
+      ytext.delete(start, w[0].length); // "select + delete"
+      await sleep(120);
+      await typeAt(client, start, REPLACEMENTS[Math.floor(client.rand() * REPLACEMENTS.length)]);
+    } else {
+      const sentence = `\n${client.member.name.split(" ")[0]}: ${
+        SENTENCES[Math.floor(client.rand() * SENTENCES.length)]
+      }`;
+      await typeAt(client, ytext.length, sentence);
+    }
+    turn += 1;
+    await sleep(500 + Math.floor(client.rand() * 700)); // brief hand-off pause
+  }
+}
+
 async function shutdown(): Promise<void> {
   if (stopping) return;
   stopping = true;
@@ -212,21 +306,63 @@ async function main(): Promise<void> {
   const { vaultId, members, notes } = await loadWorld();
   if (members.length === 0) throw new Error("No members to simulate (all skipped?).");
 
-  const hot = pickHotNotes(notes, members.length);
-  console.log(
-    `\n🎬  Simulating ${members.length} teammates across ${hot.length} hot notes ` +
-      `(${members.length * demoConfig.docsPerUser} live connections)`,
-  );
-  if (FOCUS) console.log(`   focus filter: rel_path contains "${FOCUS}"`);
-
-  // Stagger each member across the hot set so every hot note gets ~2-3 people.
-  const opens: Array<{ member: Member; note: NoteRow }> = [];
-  members.forEach((member, k) => {
-    for (let j = 0; j < demoConfig.docsPerUser; j++) {
-      const note = hot[(k * demoConfig.docsPerUser + j) % hot.length];
-      opens.push({ member, note });
+  // ---- Crowd mode: N teammates collaboratively write one file, in sequence ----
+  if (CROWD) {
+    const target =
+      (CROWD_FILE ? notes.find((n) => n.relPath.includes(CROWD_FILE)) : undefined) ?? notes[0];
+    const n = Math.min(CROWD_N, members.length);
+    const crowd = members.slice(0, n);
+    console.log(`\n🎬  ${n} teammates writing "${target.relPath}" together, live:\n`);
+    crowd.forEach((m) => console.log(`   • ${m.name}`));
+    let s = 1;
+    for (const member of crowd) {
+      if (stopping) break;
+      await makeClient(vaultId, member, target, s++, /*autoTick*/ false);
+      await sleep(60);
     }
-  });
+    console.log(`\n🎥  Open "${target.relPath}" on camera — watch them type & edit it.`);
+    console.log("\n   (Ctrl-C to stop.)\n");
+    void runCompose(clients.filter((c) => c.note.id === target.id));
+    return;
+  }
+
+  const opens: Array<{ member: Member; note: NoteRow }> = [];
+  if (SPREAD_ALL) {
+    // Spread everyone across ALL files, unevenly: give each note one teammate
+    // first (so every file is covered when members ≥ files), then scatter the
+    // remaining teammates at random so some files end up busier than others.
+    const shuffledNotes = [...notes].sort(() => Math.random() - 0.5);
+    members.forEach((member, k) => {
+      const note =
+        k < shuffledNotes.length
+          ? shuffledNotes[k]
+          : notes[Math.floor(Math.random() * notes.length)];
+      opens.push({ member, note });
+    });
+    const counts = new Map<string, number>();
+    for (const o of opens) counts.set(o.note.relPath, (counts.get(o.note.relPath) ?? 0) + 1);
+    console.log(
+      `\n🎬  Spreading ${members.length} teammates unevenly across ${counts.size}/${notes.length} files:\n`,
+    );
+    for (const [rel, c] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+      console.log(`   ${String(c).padStart(2)}×  ${rel}`);
+    }
+  } else {
+    const hot = pickHotNotes(notes, members.length);
+    console.log(
+      `\n🎬  Simulating ${members.length} teammates across ${hot.length} hot notes ` +
+        `(${members.length * demoConfig.docsPerUser} live connections)`,
+    );
+    if (FOCUS) console.log(`   focus filter: rel_path contains "${FOCUS}"`);
+    members.forEach((member, k) => {
+      for (let j = 0; j < demoConfig.docsPerUser; j++) {
+        opens.push({ member, note: hot[(k * demoConfig.docsPerUser + j) % hot.length] });
+      }
+    });
+    console.log("\n🎥  Open any of these files on camera to see live teammates:\n");
+    for (const n of hot.slice(0, 20)) console.log(`   • ${n.relPath}`);
+    if (hot.length > 20) console.log(`   … and ${hot.length - 20} more`);
+  }
 
   // Open connections with a small stagger to avoid a thundering herd.
   let seed = 1;
@@ -236,9 +372,6 @@ async function main(): Promise<void> {
     await new Promise((r) => setTimeout(r, 40));
   }
 
-  console.log("\n🎥  Open any of these files on camera to see live teammates:\n");
-  for (const n of hot.slice(0, 20)) console.log(`   • ${n.relPath}`);
-  if (hot.length > 20) console.log(`   … and ${hot.length - 20} more`);
   console.log("\n   (Ctrl-C to stop.)\n");
 }
 

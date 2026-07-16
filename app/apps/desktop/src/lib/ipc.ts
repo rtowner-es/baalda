@@ -95,6 +95,21 @@ export const pickVault = () => invoke<VaultInfo | null>("pick_vault");
 export const openVault = (path: string) => invoke<VaultInfo>("open_vault", { path });
 export const getLastVault = () => invoke<VaultInfo | null>("get_last_vault");
 
+/** A recently opened vault (newest first); `openedAt` is epoch-ms (0 if unknown). */
+export interface RecentVault {
+  path: string;
+  name: string;
+  openedAt: number;
+}
+/** Recently opened vaults, newest first, pruned to those that still exist. */
+export const getRecentVaults = () => invoke<RecentVault[]>("get_recent_vaults");
+/** Forget one vault from the recents list. */
+export const removeRecentVault = (path: string) =>
+  invoke<void>("remove_recent_vault", { path });
+/** Create a new empty vault folder `<parent>/<name>` and open it. */
+export const createVault = (parent: string, name: string) =>
+  invoke<VaultInfo>("create_vault", { parent, name });
+
 // ---- Workspace root + `current` pointer (per-workspace folders) ------------
 // The app manages one root dir; each workspace gets a subfolder, and the active
 // workspace's folder is mirrored to `<root>/current` for external tools.
@@ -180,6 +195,10 @@ export const writeBinaryFile = (relPath: string, bytes: Uint8Array) =>
   invoke<void>("write_binary_file", { relPath, bytes: Array.from(bytes) });
 
 export const listAttachments = () => invoke<AttachmentMeta[]>("list_attachments");
+
+/** Read a dropped/picked host file by absolute path (not vault-scoped). */
+export const readExternalFile = (path: string) =>
+  invoke<number[]>("read_external_file", { path }).then((a) => Uint8Array.from(a));
 
 // ---- OS keychain (Phase 2 auth, spec 04 §7) -------------------------------
 // Session tokens live in the OS keychain, never in localStorage/plaintext.

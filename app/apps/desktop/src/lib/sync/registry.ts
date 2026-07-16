@@ -2,9 +2,11 @@
 //
 // On vault-connect (signed in, with an active org) we make the server aware of
 // this vault's folders and notes so that `doc_id`s are STABLE and SHARED across
-// devices. The server is the source of truth for ids: we adopt existing rows by
-// path and create only what's missing. The resulting {relPath → {vaultId, docId}}
-// map is what the sync layer uses to name Hocuspocus documents.
+// devices. We adopt existing server rows by path, and for anything missing we
+// create it USING THE LOCAL INDEX doc_id (the server honours a supplied id) so a
+// note keeps one identity across its .md file, the local CRDT store, and the
+// server. The resulting {relPath → {vaultId, docId}} map is what the sync layer
+// uses to name Hocuspocus documents.
 //
 // The mapping is persisted to the vault's own `.context/config.json` (via ipc),
 // so it travels with the vault, not the app profile.
@@ -40,6 +42,14 @@ export interface ReconcileInput {
   vaultName: string;
 }
 
+/** Extensions treated as editable notes (reconciled to the server `notes` set).
+ *  Images/PDFs surface in the tree but sync as embedded attachments, not notes. */
+const NOTE_EXTS = ["md", "markdown", "mdx", "txt", "html", "htm", "canvas"];
+function isNoteFile(path: string): boolean {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return path.includes(".") && NOTE_EXTS.includes(ext);
+}
+
 /** Flatten a tree into folder paths and note paths (both vault-relative). */
 export function flattenTree(root: TreeNode): { folders: TreeNode[]; notes: TreeNode[] } {
   const folders: TreeNode[] = [];
@@ -48,8 +58,8 @@ export function flattenTree(root: TreeNode): { folders: TreeNode[]; notes: TreeN
     if (n.isDir) {
       if (n.path) folders.push(n); // skip the root (empty path)
       for (const c of n.children ?? []) walk(c);
-    } else {
-      notes.push(n);
+    } else if (isNoteFile(n.path)) {
+      notes.push(n); // only text/note files become server notes
     }
   };
   walk(root);
@@ -205,6 +215,13 @@ export class VaultRegistry {
 
     const titles = await ipc.listNoteTitles();
     const titleByPath = new Map(titles.map((t) => [t.path, t.title] as const));
+    // The local index already keyed each note by a stable doc_id. Supply it as
+    // the server id so a note has ONE identity across the .md file, the local
+    // CRDT store, and the server (the invariant: key by doc_id, never by path).
+    // Omitting it lets the server mint a *different* random id, which forks the
+    // note — the editor's bridge persists CRDT under the local id while sync
+    // reads/writes the server id, so content silently fails to appear.
+    const idByPath = new Map(titles.map((t) => [t.path, t.id] as const));
 
     for (const note of notes) {
       const rp = note.path;
@@ -216,6 +233,7 @@ export class VaultRegistry {
           relPath: rp,
           title: titleByPath.get(rp) ?? note.name,
           folderId,
+          docId: idByPath.get(rp),
         });
         docIdByPath.set(rp, noteDocId(created));
       } catch (e) {
@@ -261,7 +279,11 @@ export class VaultRegistry {
    * Register a single newly-created note on demand (e.g. after ⌘N) and return
    * its mapping, or null if the vault isn't reconciled yet.
    */
-  async registerNote(relPath: string, title: string | null): Promise<DocMapping | null> {
+  async registerNote(
+    relPath: string,
+    title: string | null,
+    docId?: string,
+  ): Promise<DocMapping | null> {
     if (!this.serverVaultId) return null;
     const existing = this.byPath.get(relPath);
     if (existing) return existing;
@@ -272,6 +294,9 @@ export class VaultRegistry {
         relPath,
         title,
         folderId,
+        // Reuse the local index doc_id so the server doesn't fork a second
+        // identity for this note (see reconcile's idByPath note).
+        docId,
       });
       const mapping = { vaultId: this.serverVaultId, docId: noteDocId(created) };
       this.byPath.set(relPath, mapping);

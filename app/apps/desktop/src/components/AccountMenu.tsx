@@ -154,6 +154,11 @@ export function AccountMenu() {
   );
 }
 
+// How many workspaces the popover shows inline (the current one + a couple of
+// recents). Anything past this lives on the Workspaces settings page so a long
+// account list never turns the menu into a scroll trap.
+const POPOVER_WORKSPACE_LIMIT = 3;
+
 function AccountPopover({
   onClose,
   onOpenMembers,
@@ -247,11 +252,14 @@ function AccountPopover({
       <div className="menu-sep" />
       <div className="menu-label">Workspace</div>
 
-      {/* Active workspace pinned to the top — it's the one you're working in. */}
+      {/* Active workspace pinned to the top — it's the one you're working in.
+          Only the first few show here; the rest live in Workspace settings. */}
       {[
         ...organizations.filter((o) => o.id === activeOrgId),
         ...organizations.filter((o) => o.id !== activeOrgId),
-      ].map((o) => {
+      ]
+        .slice(0, POPOVER_WORKSPACE_LIMIT)
+        .map((o) => {
         const isActive = o.id === activeOrgId;
         return (
           <button
@@ -290,6 +298,17 @@ function AccountPopover({
           </button>
         );
       })}
+
+      {organizations.length > POPOVER_WORKSPACE_LIMIT && (
+        <button className="menu-item subtle" onClick={onOpenMembers}>
+          <span className="menu-swatch more" aria-hidden="true">
+            …
+          </span>
+          <span className="menu-item-label">
+            All workspaces ({organizations.length})
+          </span>
+        </button>
+      )}
 
       {creating ? (
         <>

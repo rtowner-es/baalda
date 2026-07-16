@@ -76,6 +76,11 @@
    owns the ring / glow / contrast-fill treatment and is the single
    source of truth (the old App.css copy was removed).
    ============================================================ */
+/* Wraps the stack + roster so an outside click can be told apart from the
+   controls; static (unpositioned) so the roster still anchors to .editor-toolbar. */
+.presence-controls {
+  display: inline-flex;
+}
 .presence-bar {
   display: inline-flex;
   align-items: center;
@@ -85,12 +90,9 @@
   background: none;
   cursor: pointer;
   border-radius: var(--radius-pill);
-  transition: background var(--t-fast) var(--ease);
 }
-.presence-bar:hover,
-.presence-bar.open {
-  background: var(--bg-hover);
-}
+/* No backing plate — hovering the stack grows the faces and reveals the roster
+   (see .presence-bar:hover .presence-avatar); a box behind them read as a shadow. */
 
 .presence-avatar {
   position: relative;
@@ -116,6 +118,8 @@
   padding: 1.5px;
   box-sizing: border-box;
   margin-left: -10px;
+  /* Spring the faces on hover rather than casting a shadow. */
+  transition: transform var(--t-fast) var(--ease-spring, var(--ease));
 }
 .presence-avatar svg {
   width: 100%;
@@ -125,6 +129,15 @@
 }
 .presence-avatar:first-child {
   margin-left: 0;
+}
+/* Hovering the stack lifts every face; the one under the cursor grows a touch
+   more and rises above its neighbours. */
+.presence-bar:hover .presence-avatar {
+  transform: scale(1.1);
+}
+.presence-bar .presence-avatar:hover {
+  transform: scale(1.22);
+  z-index: 3;
 }
 /* Offline / not-live: neutral gray ring (colour comes in via --user-color) with
    a slight dim so present peers read as brighter than absent ones. */
@@ -327,61 +340,91 @@
 }
 
 /* ============================================================
-   Remote presence — cursors + selections from y-codemirror.next.
-   The binding sets per-user color inline (caret background/border,
-   selection at ~20% alpha via `color + '33'`). We restyle the
-   chrome; the colors stay inline so they remain per-user.
+   Remote presence — selections from y-codemirror.next + our own
+   animated carets (lib/editor/remoteCursors.ts).
+
+   We keep yCollab's selection *highlight* (mark decorations reflow
+   with the text) but HIDE its inline caret widget — an inline caret
+   teleports on every edit and can't be transitioned. Our carets live
+   in a CodeMirror layer, positioned by `transform`, so they glide.
+   Per-user colour arrives inline: yCollab as `background-color` on the
+   selection; ours as the `--rc` custom property on each caret.
    ============================================================ */
 .cm-ySelection {
-  /* selection fill is inline (user color at 20%) — nothing to add */
+  /* selection fill is inline (user color at ~20%) */
   border-radius: 2px;
 }
 .cm-yLineSelection {
   padding: 0;
 }
-
-/* Caret: a 2px bar in the user color (color comes from inline style). */
+/* Suppress yCollab's inline caret + its hover name flag — we draw our own. */
 .cm-ySelectionCaret {
-  position: relative;
-  border-left-width: 2px;
-  border-right-width: 0;
-  margin-left: -1px;
-  margin-right: 0;
-  box-sizing: border-box;
-  display: inline;
-}
-.cm-ySelectionCaretDot {
-  border-radius: var(--radius-pill);
-  position: absolute;
-  width: 0.4em;
-  height: 0.4em;
-  top: -0.2em;
-  left: -0.25em;
-  background-color: inherit;
-  transition: transform var(--t-med) var(--ease);
+  display: none;
 }
 
-/* Name flag: a small pill that fades in on hover. */
-.cm-ySelectionInfo {
+/* ---- Animated remote carets (our layer) ---- */
+.cm-remoteCaretLayer {
+  pointer-events: none;
+}
+/* One per peer. Position comes from an inline `transform: translate(x, y)`;
+   transitioning it makes the caret glide between edits instead of snapping. */
+.cm-remoteCaret {
   position: absolute;
-  top: -1.35em;
+  top: 0;
+  left: 0;
+  width: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition: transform 90ms var(--ease);
+  /* Fade in the first time a peer's caret appears (opacity only, so it doesn't
+     fight the inline `transform` that holds the caret's position). */
+  animation: rc-appear 160ms var(--ease) both;
+}
+/* While the user scrolls, carets must stay glued to their text, not lag. */
+.cm-remoteCaretLayer.is-scrolling .cm-remoteCaret {
+  transition: none;
+}
+.cm-remoteCaret-bar {
+  position: absolute;
   left: -1px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--rc, var(--accent));
+  border-radius: 1px;
+}
+/* Always-on name flag in the peer's colour, sitting just above the caret. */
+.cm-remoteCaret-label {
+  position: absolute;
+  left: -1px;
+  bottom: 100%;
+  margin-bottom: 2px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-body);
   font-size: var(--fs-xs);
   font-weight: 600;
-  font-style: normal;
-  line-height: normal;
+  line-height: 1.3;
   user-select: none;
   color: var(--text-on-accent);
-  background-color: inherit; /* inherits the user color from the caret */
-  padding: 2px var(--sp-2);
+  background: var(--rc, var(--accent));
+  padding: 1px var(--sp-2);
   border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 0;
   box-shadow: var(--shadow-sm);
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity var(--t-med) var(--ease);
-  z-index: 101;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
-.cm-ySelectionCaret:hover > .cm-ySelectionInfo {
-  opacity: 1;
+/* Caret near the very top: hang the flag below so it isn't clipped. */
+.cm-remoteCaret.flip .cm-remoteCaret-label {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 2px;
+  border-radius: var(--radius-sm) var(--radius-sm) var(--radius-sm) 0;
+}
+@keyframes rc-appear {
+  from {
+    opacity: 0;
+  }
 }

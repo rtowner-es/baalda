@@ -32,6 +32,7 @@ import {
   buildIndexNotes,
   collectRealNotes,
   folderPathsFor,
+  quickNotes,
   readNoteBody,
   synthesizeNotes,
   titleFromRelPath,
@@ -39,6 +40,8 @@ import {
 } from "./content.js";
 
 const RESET = process.argv.includes("--reset") || process.env.DEMO_RESET === "1";
+/** --quick: seed a tiny 10-note / 2-folder vault for fast iteration. */
+const QUICK = process.argv.includes("--quick") || process.env.DEMO_QUICK === "1";
 
 /** Wipe a prior demo org + its demo users so a reseed is clean & idempotent. */
 async function resetDemo(): Promise<void> {
@@ -183,26 +186,32 @@ async function main(): Promise<void> {
   console.log(`🏢  Org ${orgId}\n📦  Vault ${vaultId}\n`);
 
   // --- plan the note set ---------------------------------------------------
-  console.log("📚  Scanning source vault…");
-  const realRel = await collectRealNotes(demoConfig.sourceVaultPath, demoConfig.maxImport);
-  console.log(`   found ${realRel.length} real markdown files`);
+  let allNotes: PlannedNote[];
+  if (QUICK) {
+    // Tiny fixed structure (10 notes, 2 folders) for a fast sync + teammate test.
+    allNotes = quickNotes(team);
+    console.log(`⚡  --quick: ${allNotes.length} notes in 2 folders`);
+  } else {
+    console.log("📚  Scanning source vault…");
+    const realRel = await collectRealNotes(demoConfig.sourceVaultPath, demoConfig.maxImport);
+    console.log(`   found ${realRel.length} real markdown files`);
 
-  const realTitles = realRel.map(titleFromRelPath);
-  const synthCount = Math.max(0, demoConfig.targetNotes - realRel.length);
-  const synth = synthesizeNotes(synthCount, team, realTitles);
-  console.log(`   synthesizing ${synth.length} activity notes → target ${demoConfig.targetNotes}`);
+    const realTitles = realRel.map(titleFromRelPath);
+    const synthCount = Math.max(0, demoConfig.targetNotes - realRel.length);
+    const synth = synthesizeNotes(synthCount, team, realTitles);
+    console.log(`   synthesizing ${synth.length} activity notes → target ${demoConfig.targetNotes}`);
 
-  // Assemble the full planned-note list (real → PlannedNote by lazy read).
-  const realPlanned: PlannedNote[] = realRel.map((rel, i) => ({
-    relPath: rel,
-    title: titleFromRelPath(rel),
-    body: "", // filled from disk during the write pass
-    authorIndex: i % team.length,
-  }));
-
-  const allBeforeIndex = [...realPlanned, ...synth];
-  const indexNotes = buildIndexNotes(allBeforeIndex.map((n) => n.relPath));
-  const allNotes = [...allBeforeIndex, ...indexNotes];
+    // Assemble the full planned-note list (real → PlannedNote by lazy read).
+    const realPlanned: PlannedNote[] = realRel.map((rel, i) => ({
+      relPath: rel,
+      title: titleFromRelPath(rel),
+      body: "", // filled from disk during the write pass
+      authorIndex: i % team.length,
+    }));
+    const allBeforeIndex = [...realPlanned, ...synth];
+    const indexNotes = buildIndexNotes(allBeforeIndex.map((n) => n.relPath));
+    allNotes = [...allBeforeIndex, ...indexNotes];
+  }
 
   // Guarantee unique rel-paths: a note's path is its identity in the tree, and
   // the synthesizer can collide (two meetings on the same day+topic). Real files

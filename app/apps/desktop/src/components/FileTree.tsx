@@ -20,6 +20,9 @@ import {
   renameInOrder,
 } from "../lib/ordering";
 import { LOCK_TITLES, lockScopesByPath, type LockScope } from "../lib/locks";
+import { previewKind } from "../lib/preview";
+import { embedDroppedFile } from "../lib/attachments";
+import { activeNoteEditable, insertIntoActiveNote } from "../lib/editor/activeView";
 import { useStore } from "../store";
 import { shareResourceId } from "../lib/api";
 import { syncManager } from "../lib/sync/docSession";
@@ -154,6 +157,11 @@ export function FileTree() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // While a bulk delete runs: {done,total} drives a progress bar in the
+  // selectbar so a large delete reads as "working", not "frozen".
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   // onActivate is captured by arborist; read the live mode through a ref.
   const selectModeRef = useRef(false);
   selectModeRef.current = selectMode;
@@ -245,6 +253,8 @@ export function FileTree() {
     );
     const store = useStore.getState();
     let order = store.itemOrder;
+    setBulkProgress({ done: 0, total: paths.length });
+    let done = 0;
     for (const p of paths) {
       try {
         await ipc.deletePath(p);
@@ -255,9 +265,11 @@ export function FileTree() {
       } catch (e) {
         console.error("bulk delete failed", p, e);
       }
+      setBulkProgress({ done: ++done, total: paths.length });
     }
     store.setItemOrder(order);
     await refreshAll();
+    setBulkProgress(null);
     exitSelect();
   }
 
@@ -311,6 +323,27 @@ export function FileTree() {
     await useStore.getState().refreshTitles();
   }
 
+  /**
+   * After an import, register the new markdown notes on the server under their
+   * LOCAL index doc_ids (via the same id the editor's bridge uses), so sync
+   * doesn't fork a second identity for them. Without this an imported note lives
+   * only on disk until the seed race, which the background feed could lose.
+   * No-op when sync is off. Call after `refreshAll()` so the index has ids.
+   */
+  async function registerImported(summary: ipc.ImportSummary) {
+    if (!useStore.getState().syncEnabled) return;
+    const roots = summary.imported;
+    const under = (p: string) => roots.some((r) => p === r || p.startsWith(`${r}/`));
+    for (const t of useStore.getState().titles) {
+      if (!t.path.toLowerCase().endsWith(".md") || !under(t.path)) continue;
+      try {
+        await syncManager.registry.registerNote(t.path, t.title, t.id);
+      } catch (e) {
+        console.warn("[import] registerNote failed", t.path, e);
+      }
+    }
+  }
+
   /** Flash a short-lived status pill (auto-dismisses). */
   function flashStatus(text: string, tone: "success" | "error" | "neutral" = "success") {
     setImportStatus({ text, tone });
@@ -351,12 +384,40 @@ export function FileTree() {
           setDropActive(false);
         } else if (p.type === "drop") {
           setDropActive(false);
+          if (!p.paths?.length) return;
           const pt = insideTree(p.position.x, p.position.y);
-          if (!pt || !p.paths?.length) return; // dropped outside the tree
+          // Dropped onto the open note (outside the tree, an editable editor is
+          // live) → attach the files INTO that note's content rather than
+          // importing them as sidebar entries.
+          if (!pt && activeNoteEditable()) {
+            try {
+              const embeds: string[] = [];
+              for (const path of p.paths) embeds.push(await embedDroppedFile(path));
+              insertIntoActiveNote(embeds.join("\n"));
+              await refreshAll();
+            } catch (e) {
+              console.error("attach (drop) failed", e);
+              flashStatus("Couldn't attach file", "error");
+            }
+            return;
+          }
+          // Otherwise it's an import: into the folder under the pointer (a
+          // sidebar drop) or the vault root (dropped on the main area with no
+          // note open). Same import the menu uses — files or whole folders.
+          const dest = pt ? dirAtClientPoint(pt.x, pt.y) : "";
           try {
-            const summary = await ipc.importPaths(dirAtClientPoint(pt.x, pt.y), p.paths);
+            const summary = await ipc.importPaths(dest, p.paths);
             await refreshAll();
+            await registerImported(summary);
             announceImport(summary);
+            // A single image/PDF dropped on the empty main area → preview it.
+            if (
+              !pt &&
+              summary.imported.length === 1 &&
+              previewKind(summary.imported[0]) != null
+            ) {
+              await useStore.getState().openNoteByPath(summary.imported[0]);
+            }
           } catch (e) {
             console.error("import (drop) failed", e);
             flashStatus("Import failed", "error");
@@ -381,6 +442,7 @@ export function FileTree() {
       if (!sources || sources.length === 0) return;
       const summary = await ipc.importPaths(dir, sources);
       await refreshAll();
+      await registerImported(summary);
       announceImport(summary);
     } catch (e) {
       console.error("import files failed", e);
@@ -396,6 +458,7 @@ export function FileTree() {
       if (!src) return;
       const summary = await ipc.importPaths(dir, [src]);
       await refreshAll();
+      await registerImported(summary);
       announceImport(summary);
     } catch (e) {
       console.error("import folder failed", e);
@@ -425,9 +488,9 @@ export function FileTree() {
       return;
     }
     if (!node.data.isDir) {
-      // Only notes/pages render in-app; other file types are shown in the tree
-      // but aren't opened in the editor (avoids feeding binaries to it).
-      if (isOpenablePath(node.data.path)) {
+      // Notes/pages render in the editor; images/PDFs open in the file preview.
+      // Any other binary is listed but not opened (nothing can render it).
+      if (isOpenablePath(node.data.path) || previewKind(node.data.path) != null) {
         void useStore.getState().openNoteByPath(node.data.path);
       }
     }
@@ -650,7 +713,27 @@ export function FileTree() {
           </button>
         </div>
       </div>
-      {selectMode && (
+      {selectMode && bulkProgress ? (
+        <div className="filetree-selectbar deleting">
+          <span className="selbar-count">
+            Deleting {bulkProgress.done} of {bulkProgress.total}…
+          </span>
+          <div
+            className="selbar-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={bulkProgress.total}
+            aria-valuenow={bulkProgress.done}
+          >
+            <span
+              className="selbar-progress-fill"
+              style={{
+                width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
+              }}
+            />
+          </div>
+        </div>
+      ) : selectMode ? (
         <div className="filetree-selectbar">
           <button
             className={`selbar-check${allSelected ? " on" : ""}`}
@@ -698,12 +781,13 @@ export function FileTree() {
             </div>
           )}
         </div>
-      )}
+      ) : null}
       {data.length === 0 ? (
         <div className="filetree-empty">No notes yet</div>
       ) : (
         <Tree<TreeNode>
           ref={treeRef}
+          className="filetree-scroll"
           data={data}
           idAccessor="id"
           openByDefault={false}

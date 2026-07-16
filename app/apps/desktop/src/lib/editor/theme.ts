@@ -120,6 +120,23 @@ export const editorTheme = EditorView.theme({
     borderRadius: "var(--radius-sm)",
     verticalAlign: "bottom",
   },
+  // Markdown `![alt](src.pdf)` embeds rendered as an inline preview block.
+  ".cm-md-pdf": {
+    display: "block",
+    margin: "var(--sp-3) 0",
+    height: "480px",
+    maxWidth: "100%",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border)",
+    overflow: "hidden",
+    background: "var(--bg-subtle)",
+  },
+  ".cm-md-pdf-frame": {
+    width: "100%",
+    height: "100%",
+    border: "0",
+    display: "block",
+  },
   ".cm-md-html :first-child": { marginTop: "0" },
   ".cm-md-html :last-child": { marginBottom: "0" },
   // A `<!DOCTYPE>`/comment-only block sanitizes to nothing — don't leave a gap.

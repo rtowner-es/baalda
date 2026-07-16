@@ -9,9 +9,38 @@ use std::path::{Component, Path, PathBuf};
 /// the note pipeline.
 pub const IGNORED_DIRS: &[&str] = &[".context", ".git"];
 
+/// Heavy build/dependency directories we never walk or sync (on top of dotfiles
+/// and `IGNORED_DIRS`). Without this, importing a project folder floods the
+/// vault with thousands of files (e.g. a stray `node_modules`). Dot-prefixed
+/// variants like `.next`/`.cache`/`.venv` are already covered by the dotfile rule.
+pub const DENIED_DIRS: &[&str] = &["node_modules", "dist", "build", "target", "vendor", "__pycache__", "venv"];
+
+/// Allowlist of file extensions the vault surfaces + syncs (lowercase, no dot).
+/// Everything else — source code, lockfiles, binaries — is ignored, so importing
+/// a real project directory can't dump junk into the workspace.
+pub const ALLOWED_EXTS: &[&str] = &[
+    // notes / text
+    "md", "markdown", "mdx", "txt", "html", "htm", "canvas",
+    // images
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "avif",
+    // documents
+    "pdf",
+];
+
 /// True if a directory/file name should be skipped by the tree walk & watcher.
 pub fn is_ignored_name(name: &str) -> bool {
-    name.starts_with('.') || IGNORED_DIRS.contains(&name)
+    name.starts_with('.') || IGNORED_DIRS.contains(&name) || DENIED_DIRS.contains(&name)
+}
+
+/// True if a file (by name) is an allowed, surfaceable type per `ALLOWED_EXTS`.
+/// Files with no extension, or an extension not on the list, are not surfaced.
+pub fn is_allowed_file(name: &str) -> bool {
+    match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => {
+            ALLOWED_EXTS.contains(&ext.to_ascii_lowercase().as_str())
+        }
+        _ => false,
+    }
 }
 
 /// True if any component of a vault-relative path is an ignored dir/dotfile.
@@ -114,6 +143,25 @@ mod tests {
         assert!(rel_path_is_ignored(".context/index.sqlite"));
         assert!(rel_path_is_ignored("a/.git/config"));
         assert!(!rel_path_is_ignored("a/b/note.md"));
+    }
+
+    #[test]
+    fn ignores_heavy_dependency_dirs() {
+        assert!(is_ignored_name("node_modules"));
+        assert!(is_ignored_name("target"));
+        assert!(is_ignored_name("__pycache__"));
+        assert!(rel_path_is_ignored("app/node_modules/pkg/index.js"));
+        assert!(!is_ignored_name("Projects")); // real folders still walked
+    }
+
+    #[test]
+    fn allowlist_accepts_notes_images_pdf_only() {
+        for ok in ["note.md", "a.markdown", "b.MDX", "readme.txt", "page.html", "img.png", "p.JPG", "doc.pdf"] {
+            assert!(is_allowed_file(ok), "{ok} should be allowed");
+        }
+        for no in ["script.js", "types.d.ts", "styles.css", "data.json", "Makefile", "LICENSE", "bundle.min.js"] {
+            assert!(!is_allowed_file(no), "{no} should be rejected");
+        }
     }
 
     #[test]

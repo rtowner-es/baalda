@@ -4,8 +4,11 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { keymap, EditorView } from "@codemirror/view";
 import { Compartment, EditorState } from "@codemirror/state";
 import { yCollab, yUndoManagerKeymap } from "y-codemirror.next";
+import { remoteCursors } from "../lib/editor/remoteCursors";
 import type { Awareness } from "y-protocols/awareness";
 import { createEditorState } from "../lib/editor";
+import { setActiveView } from "../lib/editor/activeView";
+import { saveAttachment } from "../lib/attachments";
 import { bridgeManager } from "../lib/bridge";
 import { effectiveLockForPath, lockScopesByPath } from "../lib/locks";
 import { playPingSound } from "../lib/presence/ping";
@@ -14,6 +17,8 @@ import { colorForUser, PRESENCE_OFFLINE } from "../lib/presence/color";
 import { useStore } from "../store";
 import * as ipc from "../lib/ipc";
 import { HtmlView } from "./HtmlView";
+import { FilePreview } from "./FilePreview";
+import { previewKind } from "../lib/preview";
 import { relativeAgo, characterSvg } from "./Identity";
 
 interface Peer {
@@ -85,23 +90,6 @@ function makeResolveAsset(vaultPath: string | null, notePath: string) {
   };
 }
 
-/**
- * Save pasted/dropped image bytes under the vault's `attachments/` dir, named by
- * a short content hash so identical images de-dupe, and return the vault-root
- * markdown `src` to embed. `makeResolveAsset` turns that `/attachments/…` path
- * back into a loadable `asset:` URL for rendering.
- */
-async function saveAttachment(bytes: Uint8Array, ext: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  const hash = Array.from(new Uint8Array(digest))
-    .slice(0, 8)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const rel = `attachments/${hash}.${ext}`;
-  await ipc.writeBinaryFile(rel, bytes);
-  return `/${rel}`;
-}
-
 /** CodeMirror extensions that make the view non-editable (view-only / locked). */
 function editableExtensions(readOnly: boolean) {
   return readOnly
@@ -141,18 +129,19 @@ function PresenceAvatar({
 
 /**
  * "Who's in this note" avatar stack (spec 04 §5). Avatars overlap; anything past
- * MAX_AVATARS collapses into a "+N" chip. Clicking anywhere on the stack toggles
- * the roster popover.
+ * MAX_AVATARS collapses into a "+N" chip. The roster popover opens on hover/focus
+ * of the stack; a click (or keyboard activation) opens it too, for touch and
+ * assistive tech — it never toggles shut, so it can't fight the hover state.
  */
 function PresenceBar({
   peers,
   open,
-  onToggle,
+  onOpen,
   online = true,
 }: {
   peers: Peer[];
   open: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
   /** Live sync state — when false, avatar rings show neutral gray. */
   online?: boolean;
 }) {
@@ -166,10 +155,7 @@ function PresenceBar({
     <button
       type="button"
       className={`presence-bar${open ? " open" : ""}`}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
+      onClick={onOpen}
       aria-label={`${peers.length} here: ${names}`}
       aria-expanded={open}
     >
@@ -233,31 +219,24 @@ function PeerRow({
 /**
  * Roster popover: the quick list of everyone in the note, each with their live
  * status ring, where they are, and how long since they were last active. Opens
- * on a click of the presence stack; closes on any outside click.
+ * on a click of the presence stack; the parent closes it on any outside click.
  */
 function PeerRoster({
   peers,
   selfId,
   onPing,
-  onClose,
 }: {
   peers: Peer[];
   selfId: string | null;
   onPing: (peer: Peer) => void;
-  onClose: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 15_000);
     return () => window.clearInterval(id);
   }, []);
-  useEffect(() => {
-    const close = () => onClose();
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [onClose]);
   return (
-    <div className="peer-roster" onClick={(e) => e.stopPropagation()}>
+    <div className="peer-roster">
       <div className="peer-roster-title">
         {peers.length} {peers.length === 1 ? "person" : "people"} here
       </div>
@@ -300,11 +279,63 @@ export function Editor() {
   // open can flip the live view read-only without rebuilding it.
   const editableRef = useRef<Compartment | null>(null);
   const [rosterOpen, setRosterOpen] = useState(false);
+  // Wraps the presence stack + its roster popover so an outside click can be
+  // told apart from a click on the controls themselves.
+  const presenceRef = useRef<HTMLDivElement | null>(null);
+  // Grace timer for the hover-out close: leaving the stack schedules a close a
+  // beat later so gliding across the small gap into the popover (which cancels
+  // it) doesn't make the roster flicker shut.
+  const rosterCloseTimer = useRef<number | null>(null);
   const [pingFrom, setPingFrom] = useState<string | null>(null);
   const awarenessRef = useRef<Awareness | null>(null);
   // Pings already played, keyed by sender clientId + timestamp.
   const seenPingsRef = useRef<Set<string>>(new Set());
   const isHtml = notePath != null && /\.html?$/i.test(notePath);
+  // Images/PDFs aren't notes: no CRDT doc, no sync — just a streamed preview.
+  const preview = notePath != null ? previewKind(notePath) : null;
+
+  // The roster opens on hover/focus of the presence stack (below); these keep it
+  // honest for the pointer/keyboard paths too — a press outside closes it, as
+  // does Escape. Keyed only on `rosterOpen` (not on the peer list) so the steady
+  // stream of awareness updates from other live peers never tears the listeners
+  // down and rebuilds them mid-interaction.
+  useEffect(() => {
+    if (!rosterOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!presenceRef.current?.contains(e.target as Node)) setRosterOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRosterOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [rosterOpen]);
+
+  // Open now / close-after-a-beat, shared by the hover and focus handlers.
+  const openRoster = () => {
+    if (rosterCloseTimer.current != null) {
+      window.clearTimeout(rosterCloseTimer.current);
+      rosterCloseTimer.current = null;
+    }
+    setRosterOpen(true);
+  };
+  const scheduleCloseRoster = () => {
+    if (rosterCloseTimer.current != null) window.clearTimeout(rosterCloseTimer.current);
+    rosterCloseTimer.current = window.setTimeout(() => {
+      rosterCloseTimer.current = null;
+      setRosterOpen(false);
+    }, 140);
+  };
+  useEffect(
+    () => () => {
+      if (rosterCloseTimer.current != null) window.clearTimeout(rosterCloseTimer.current);
+    },
+    [],
+  );
 
   // Is this note (or a containing folder) locked? Refines the read-only badge
   // copy — a lock is deliberate protection, not a missing grant.
@@ -315,6 +346,7 @@ export function Editor() {
 
   useEffect(() => {
     if (!hostRef.current || notePath == null || /\.html?$/i.test(notePath)) return;
+    if (previewKind(notePath) != null) return; // image/PDF preview, not a CRDT note
     const docId = useStore.getState().openNote?.id ?? null;
     if (docId == null) return; // wait until the note's doc_id (meta) is known
     const myUserId = useStore.getState().session?.user.id ?? null;
@@ -375,6 +407,9 @@ export function Editor() {
         saveAttachment,
         extraExtensions: [
           yCollab(bridge.text, awareness, { undoManager: bridge.undoManager }),
+          // Our own animated carets + always-on name flags, over yCollab's
+          // selection highlight (its inline caret is hidden in editor.css).
+          remoteCursors(bridge.text, awareness),
           keymap.of(yUndoManagerKeymap),
           // Publish "editing line N" so peers can see where everyone is.
           EditorView.updateListener.of((u) => {
@@ -390,6 +425,7 @@ export function Editor() {
 
       view = new EditorView({ state, parent: hostRef.current });
       viewRef.current = view;
+      setActiveView(view); // let out-of-tree drops embed into this note
       if (!ro) view.focus();
 
       // Live "who's here" avatar row + incoming pings addressed to this user.
@@ -417,6 +453,7 @@ export function Editor() {
     return () => {
       cancelled = true;
       if (onAwarenessChange && awareness) awareness.off("change", onAwarenessChange);
+      setActiveView(null);
       if (view) view.destroy();
       viewRef.current = null;
       editableRef.current = null;
@@ -469,6 +506,11 @@ export function Editor() {
     return <HtmlView path={notePath} />;
   }
 
+  // Images and PDFs stream from disk into a lightweight viewer.
+  if (preview) {
+    return <FilePreview path={notePath} />;
+  }
+
   const myId = session?.user.id ?? null;
 
   const sendPing = (peer: Peer) => {
@@ -516,25 +558,35 @@ export function Editor() {
           )}
           {showToolbar && (
             <div className="editor-toolbar">
-              <PresenceBar
-                peers={peers}
-                open={rosterOpen}
-                onToggle={() => setRosterOpen((o) => !o)}
-                online={
-                  syncEnabled &&
-                  (syncStatus === "synced" ||
-                    syncStatus === "read-only" ||
-                    syncStatus === "connecting")
-                }
-              />
-              {rosterOpen && (
-                <PeerRoster
+              <div
+                className="presence-controls"
+                ref={presenceRef}
+                onMouseEnter={openRoster}
+                onMouseLeave={scheduleCloseRoster}
+                onFocus={openRoster}
+                onBlur={(e) => {
+                  // Ignore focus moving between the stack and a Ping button
+                  // inside the controls; only close when it truly leaves.
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    scheduleCloseRoster();
+                  }
+                }}
+              >
+                <PresenceBar
                   peers={peers}
-                  selfId={myId}
-                  onPing={sendPing}
-                  onClose={() => setRosterOpen(false)}
+                  open={rosterOpen}
+                  onOpen={openRoster}
+                  online={
+                    syncEnabled &&
+                    (syncStatus === "synced" ||
+                      syncStatus === "read-only" ||
+                      syncStatus === "connecting")
+                  }
                 />
-              )}
+                {rosterOpen && (
+                  <PeerRoster peers={peers} selfId={myId} onPing={sendPing} />
+                )}
+              </div>
               {pingFrom && (
                 <span className="ping-toast" role="status">
                   🔔 {pingFrom} pinged you

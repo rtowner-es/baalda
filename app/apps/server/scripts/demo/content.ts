@@ -187,6 +187,35 @@ export function synthesizeNotes(
 }
 
 /**
+ * Quick-test structure: exactly 10 notes across 2 folders, with wikilinks so
+ * the graph connects. Used by `--quick` for a fast sync + teammate test.
+ */
+export function quickNotes(team: readonly TeamMember[]): PlannedNote[] {
+  const groups: Record<string, string[]> = {
+    Product: ["Roadmap", "Launch Plan", "Pricing", "Metrics", "Feedback"],
+    Team: ["Standup", "Hiring", "Retro", "OKRs", "Handbook"],
+  };
+  const notes: PlannedNote[] = [];
+  let i = 0;
+  for (const folder of Object.keys(groups)) {
+    for (const title of groups[folder]) {
+      const author = team[i % team.length];
+      notes.push({
+        relPath: `${folder}/${title}.md`,
+        title,
+        authorIndex: i % team.length,
+        body:
+          `# ${title}\n\nOwned by ${author.name}.\n\n` +
+          `Related: [[Roadmap]] · [[Hiring]] · [[Metrics]]\n\n` +
+          `- First point about ${title.toLowerCase()}\n- Second point\n- Third point\n`,
+      });
+      i++;
+    }
+  }
+  return notes;
+}
+
+/**
  * Build clean index notes: one per top-level folder listing its immediate
  * children as wikilinks, plus a root workspace index linking the top folders.
  */

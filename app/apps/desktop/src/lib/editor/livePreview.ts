@@ -26,6 +26,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { openExternal } from "../ipc";
+import { previewKind } from "../preview";
 import { TASK_RE } from "./tasks";
 
 /** Turns an image `src` into a webview-loadable URL (see CreateEditorOptions). */
@@ -139,6 +140,34 @@ class ImageWidget extends WidgetType {
   }
   ignoreEvent() {
     return false;
+  }
+}
+
+/**
+ * A `![alt](src.pdf)` embed rendered as an inline preview block: the PDF streams
+ * into a framed viewer that flows with the note (the div is display:block, so it
+ * reads as a block even though it's an inline widget — sidesteps the whole-line
+ * constraint block decorations carry). Interaction (scroll) is left to the frame.
+ */
+class PdfEmbedWidget extends WidgetType {
+  constructor(readonly src: string, readonly name: string) {
+    super();
+  }
+  eq(other: PdfEmbedWidget) {
+    return other.src === this.src;
+  }
+  toDOM() {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-md-pdf";
+    const frame = document.createElement("iframe");
+    frame.className = "cm-md-pdf-frame";
+    frame.src = this.src;
+    frame.title = this.name || "PDF";
+    wrap.appendChild(frame);
+    return wrap;
+  }
+  ignoreEvent() {
+    return true; // let the embedded viewer own its clicks/scroll
   }
 }
 
@@ -310,16 +339,20 @@ function buildDecorations(view: EditorView, resolveAsset: ResolveAsset): Decorat
             }
             break;
           case "Image": {
-            // Render `![alt](src)` as an actual image; skip its child marks.
+            // Render `![alt](src)` in place; skip its child marks. Images become
+            // an inline <img>; PDFs become a framed preview block. (Both embed
+            // the same way — the file type picks the widget.)
             const urlNode = node.node.getChild("URL");
             const src = urlNode ? doc.sliceString(urlNode.from, urlNode.to) : "";
             if (src) {
               const raw = doc.sliceString(node.from, node.to);
               const alt = /^!\[([^\]]*)\]/.exec(raw)?.[1] ?? "";
+              const widget =
+                previewKind(src) === "pdf"
+                  ? new PdfEmbedWidget(resolveAsset(src), alt)
+                  : new ImageWidget(resolveAsset(src), alt);
               decos.push(
-                Decoration.replace({
-                  widget: new ImageWidget(resolveAsset(src), alt),
-                }).range(node.from, node.to)
+                Decoration.replace({ widget }).range(node.from, node.to)
               );
               return false;
             }

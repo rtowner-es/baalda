@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
-import type { VaultInfo } from "../lib/ipc";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import type { VaultInfo, RecentVault } from "../lib/ipc";
 import * as ipc from "../lib/ipc";
 import { useStore } from "../store";
 import { Wordmark } from "./Logo";
@@ -40,21 +40,46 @@ function auroraDrift(dx: number, dy: number, duration: number) {
   };
 }
 
+/** Compact "time since" label for a recent vault, e.g. "just now", "3h ago". */
+function relativeTime(ms: number): string {
+  if (!ms) return "";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 45) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.floor(mo / 12)}y ago`;
+}
+
+/** Collapse a home-prefixed path for display: /Users/x/Notes → ~/Notes. */
+function tidyPath(path: string): string {
+  const m = path.match(/^(\/Users\/[^/]+|\/home\/[^/]+|C:\\Users\\[^\\]+)(.*)$/);
+  return m ? "~" + m[2] : path;
+}
+
 export function VaultPicker() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recent, setRecent] = useState<VaultInfo | null>(null);
+  const [recents, setRecents] = useState<RecentVault[]>([]);
+  // New-vault flow: null = idle; a string = chosen parent, awaiting a name.
+  const [newParent, setNewParent] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
   const reduceMotion = useReducedMotion();
 
-  // Surface the last-opened vault as a one-tap "reopen" affordance.
+  // Surface recently opened vaults as one-tap "reopen" affordances.
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const last = await ipc.getLastVault();
-        if (alive) setRecent(last);
+        const list = await ipc.getRecentVaults();
+        if (alive) setRecents(list);
       } catch {
-        /* no recent vault — ignore */
+        /* no recents — ignore */
       }
     })();
     return () => {
@@ -71,7 +96,8 @@ export function VaultPicker() {
     await useStore.getState().seedLocalVaultIfEmpty();
   }
 
-  async function pick() {
+  // "Open existing": native folder picker → open the chosen vault.
+  async function pickExisting() {
     setBusy(true);
     setError(null);
     try {
@@ -84,19 +110,63 @@ export function VaultPicker() {
     }
   }
 
-  async function reopenRecent() {
-    if (!recent) return;
+  // "New vault" step 1: choose the parent location, then ask for a name.
+  async function startNewVault() {
+    setError(null);
+    try {
+      const parent = await ipc.pickFolder();
+      if (!parent) return;
+      setNewParent(parent);
+      setNewName("Untitled Vault");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  // "New vault" step 2: create <parent>/<name> and open it.
+  async function confirmNewVault() {
+    if (!newParent || !newName.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await ipc.openVault(recent.path);
-      await openVault(recent);
+      const vault = await ipc.createVault(newParent, newName.trim());
+      await openVault(vault);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
   }
+
+  function cancelNewVault() {
+    setNewParent(null);
+    setNewName("");
+    setError(null);
+  }
+
+  async function reopen(r: RecentVault) {
+    setBusy(true);
+    setError(null);
+    try {
+      const info = await ipc.openVault(r.path);
+      await openVault(info);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forget(path: string) {
+    setRecents((rs) => rs.filter((r) => r.path !== path));
+    try {
+      await ipc.removeRecentVault(path);
+    } catch {
+      /* best-effort; UI already updated */
+    }
+  }
+
+  const naming = newParent !== null;
 
   return (
     <div className="vault-picker">
@@ -127,45 +197,143 @@ export function VaultPicker() {
           animate={{ opacity: 1, y: 0 }}
           transition={reduceMotion ? undefined : revealTransition(REVEAL_DELAY)}
         >
-          <motion.button
-            className="primary hero"
-            disabled={busy}
-            onClick={pick}
-            whileHover={reduceMotion ? undefined : { scale: 1.04, y: -1 }}
-            whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-            transition={SPRING}
-          >
-            {busy ? "Opening…" : "Open vault"}
-          </motion.button>
-
-          {recent && (
-            <motion.button
-              className="recent-vault"
-              disabled={busy}
-              onClick={reopenRecent}
-              title={recent.path}
-              whileHover={reduceMotion ? undefined : { scale: 1.03, y: -1 }}
-              whileTap={reduceMotion ? undefined : { scale: 0.97 }}
-              transition={SPRING}
-            >
-              <span className="recent-label">Reopen</span>
-              <strong>{recent.name}</strong>
-            </motion.button>
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {naming ? (
+              // ---- New-vault naming step ----
+              <motion.form
+                key="naming"
+                className="new-vault-form"
+                initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                transition={SPRING}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void confirmNewVault();
+                }}
+              >
+                <label className="new-vault-label">Name your vault</label>
+                {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                <input
+                  className="new-vault-input"
+                  autoFocus
+                  value={newName}
+                  disabled={busy}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") cancelNewVault();
+                  }}
+                  placeholder="Untitled Vault"
+                  spellCheck={false}
+                />
+                <p className="new-vault-loc" title={newParent ?? undefined}>
+                  in <code>{tidyPath(newParent ?? "")}</code>
+                </p>
+                <div className="new-vault-buttons">
+                  <button
+                    type="button"
+                    className="ghost-pill"
+                    disabled={busy}
+                    onClick={cancelNewVault}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary sm"
+                    disabled={busy || !newName.trim()}
+                  >
+                    {busy ? "Creating…" : "Create vault"}
+                  </button>
+                </div>
+              </motion.form>
+            ) : (
+              // ---- Default: two primary actions ----
+              <motion.div
+                key="actions"
+                className="vault-primary-actions"
+                initial={reduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0 }}
+                transition={SPRING}
+              >
+                <motion.button
+                  className="primary hero"
+                  disabled={busy}
+                  onClick={startNewVault}
+                  whileHover={reduceMotion ? undefined : { scale: 1.04, y: -1 }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+                  transition={SPRING}
+                >
+                  New vault
+                </motion.button>
+                <motion.button
+                  className="ghost-pill lg"
+                  disabled={busy}
+                  onClick={pickExisting}
+                  whileHover={reduceMotion ? undefined : { scale: 1.03, y: -1 }}
+                  whileTap={reduceMotion ? undefined : { scale: 0.97 }}
+                  transition={SPRING}
+                >
+                  {busy ? "Opening…" : "Open existing"}
+                </motion.button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {error && <p className="error">{error}</p>}
 
-        <motion.p
-          className="hint"
-          initial={reduceMotion ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={
-            reduceMotion ? undefined : revealTransition(REVEAL_DELAY + 0.15)
-          }
-        >
-          Choose any folder of <code>.md</code> files.
-        </motion.p>
+        {!naming && recents.length > 0 && (
+          <motion.div
+            className="recent-list"
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={
+              reduceMotion ? undefined : revealTransition(REVEAL_DELAY + 0.15)
+            }
+          >
+            <p className="recent-heading">Recent vaults</p>
+            {recents.map((r) => (
+              <div className="recent-card" key={r.path}>
+                <button
+                  className="recent-open"
+                  disabled={busy}
+                  onClick={() => reopen(r)}
+                  title={r.path}
+                >
+                  <span className="recent-name">{r.name}</span>
+                  <span className="recent-path">{tidyPath(r.path)}</span>
+                  {r.openedAt > 0 && (
+                    <span className="recent-time">{relativeTime(r.openedAt)}</span>
+                  )}
+                </button>
+                <button
+                  className="recent-remove"
+                  aria-label={`Remove ${r.name} from recents`}
+                  title="Remove from recents"
+                  disabled={busy}
+                  onClick={() => forget(r.path)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </motion.div>
+        )}
+
+        {!naming && (
+          <motion.p
+            className="hint"
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={
+              reduceMotion ? undefined : revealTransition(REVEAL_DELAY + 0.3)
+            }
+          >
+            A vault is any folder of <code>.md</code> files.
+          </motion.p>
+        )}
       </div>
     </div>
   );
