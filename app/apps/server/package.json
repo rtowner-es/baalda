@@ -14,6 +14,10 @@
     "db:wait": "node scripts/wait-for-db.mjs",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:deploy": "node dist/db/migrate.js",
+    "seed:demo": "tsx scripts/demo/seed-demo-org.ts",
+    "seed:demo:reset": "tsx scripts/demo/seed-demo-org.ts --reset",
+    "demo:activity": "tsx scripts/demo/simulate-activity.ts",
+    "demo": "tsx scripts/demo/seed-demo-org.ts --reset && tsx scripts/demo/simulate-activity.ts",
     "test": "vitest run"
   },
   "dependencies": {
