@@ -119,10 +119,10 @@ export const successPageHtml = `<!doctype html><html lang="en"><head>
   /* Baalda wordmark — ink on light, silver on dark (mirrors Logo.tsx) */
   .wordmark { display: block; margin: 0 auto 30px; line-height: 0; }
   .wordmark img { width: 180px; height: auto; display: inline-block; }
-  .wm-silver { display: none; }
+  .wordmark img.wm-silver { display: none; }
   @media (prefers-color-scheme: dark) {
-    .wm-ink { display: none; }
-    .wm-silver { display: inline-block; }
+    .wordmark img.wm-ink { display: none; }
+    .wordmark img.wm-silver { display: inline-block; }
   }
 
   .eyebrow {
