@@ -13,11 +13,16 @@ import { createShareRoutes, type ShareDeps } from "./routes/shares.js";
 import { createOrgRoutes } from "./routes/orgs.js";
 import { graphRoutes } from "./routes/graph.js";
 import { createMcpRoutes } from "./routes/mcp.js";
+import { createBillingRoutes } from "./routes/billing.js";
+import { PolarBillingProvider } from "../billing/polar.js";
+import type { BillingProvider } from "../billing/provider.js";
 import type { DocWriter } from "../mcp/doc-writer.js";
 
 export interface AppDeps extends ShareDeps {
   /** Server-side note writer for the MCP tools (backed by the sync server). */
   docWriter: DocWriter;
+  /** Payment provider. Defaults to Polar; tests inject a fake. */
+  billingProvider?: BillingProvider;
 }
 
 /**
@@ -103,7 +108,12 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/api", registryRoutes);
   app.route("/api", blobRoutes);
   app.route("/api", createShareRoutes(deps));
-  app.route("/api", createOrgRoutes({ disconnectDoc: deps.disconnectDoc }));
+  const billingProvider = deps.billingProvider ?? new PolarBillingProvider();
+  app.route(
+    "/api",
+    createOrgRoutes({ disconnectDoc: deps.disconnectDoc, billingProvider }),
+  );
+  app.route("/api", createBillingRoutes({ provider: billingProvider }));
   app.route("/api", graphRoutes);
   app.route(
     "/api",

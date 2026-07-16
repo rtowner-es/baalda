@@ -533,6 +533,7 @@ button.primary.hero:hover:not(:disabled) {
    ============================================================ */
 /* The tree bleeds to the sidebar's edges so row hovers read full-width. */
 .filetree {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -544,6 +545,45 @@ button.primary.hero:hover:not(:disabled) {
      wrapper divs (our rows set this too) so a double-click to rename can't
      leave stray blue text-selection bands between rows. */
   user-select: none;
+}
+/* OS files dragged over the tree: a dashed accent frame + soft wash invite the
+   drop. Purely a hint — the actual routing happens on the Tauri drop event. */
+.filetree.drop-active {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
+/* Transient outcome pill after an import (menu or drop). Sits at the bottom of
+   the sidebar, out of the way, and fades itself out. */
+.filetree-status {
+  position: absolute;
+  left: var(--sp-2);
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  text-align: center;
+  animation: rise-in var(--t-fast) var(--ease) both;
+  pointer-events: none;
+}
+/* Green = success, red = failure, muted = nothing landed. */
+.filetree-status.success {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--success-soft);
+}
+.filetree-status.error {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.filetree-status.neutral {
+  color: var(--text-secondary);
 }
 /* Section header: "Notes" label on the left, the tree's action icons on the
    right (create note/folder · fold/unfold). One tidy row, nothing stretches. */
@@ -1012,6 +1052,13 @@ button.primary.hero:hover:not(:disabled) {
 .context-menu li:hover {
   background: var(--accent-soft);
   color: var(--text-primary);
+}
+/* A thin rule above an item groups it apart from the ones above (Import/Export
+   sit below the create actions). */
+.context-menu li.menu-sep-item {
+  margin-top: var(--sp-1);
+  padding-top: calc(var(--sp-2) + 1px);
+  border-top: 1px solid var(--border);
 }
 .context-menu li.danger {
   color: var(--danger);
@@ -1829,6 +1876,52 @@ button.primary.hero:hover:not(:disabled) {
 .settings-page .subhead {
   margin: var(--sp-4) 0 var(--sp-2);
 }
+
+/* Import / Export tab — airy, minimal vertical rhythm. */
+.io-tab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  max-width: 60ch;
+}
+.io-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.io-heading {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.io-desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+.io-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+}
+.io-hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
+}
+.io-result {
+  color: var(--success);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--success-soft);
+  border: 1px solid var(--success);
+  border-radius: var(--radius-sm);
+}
 .settings-page .lock-bar select:first-child {
   flex: 1.6;
   min-width: 0;
@@ -2443,6 +2536,30 @@ button.primary.hero:hover:not(:disabled) {
   background: var(--danger-soft);
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-md);
+}
+
+/* Free-plan upgrade nudge — warning palette, not danger (it isn't an error). */
+.limit-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  color: var(--text-primary);
+  background: var(--warning-soft);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  margin-top: var(--sp-2);
+}
+.limit-nudge .link-btn {
+  flex: none;
+  color: var(--warning);
+  font-weight: 600;
+}
+.limit-nudge .link-btn:hover {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
 }
 
 /* Error boundary fallback (e.g. a crashed graph panel) */
@@ -3183,4 +3300,314 @@ button.secondary:disabled {
   width: auto;
   flex: none;
   cursor: pointer;
+}
+
+/* ============================================================
+   Billing — plan card + upgrade dialog
+   ============================================================ */
+.billing-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-5);
+}
+.billing-card.plan-pro {
+  border: none;
+  background:
+    linear-gradient(var(--bg-surface), var(--bg-surface)) padding-box,
+    var(--accent-gradient) border-box;
+  border: 1px solid transparent;
+  box-shadow: var(--shadow-sm);
+}
+.billing-plan-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.billing-plan-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.plan-pro .billing-plan-name {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.billing-status {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.billing-status.past_due {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.billing-status.canceled,
+.billing-status.none {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+.billing-action {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+/* ============================================================
+   Upgrade dialog — first-class plan-selection surface
+   ============================================================ */
+.upgrade-dialog {
+  width: 480px;
+}
+.upgrade-lead {
+  margin: 0 0 var(--sp-5);
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+}
+.upgrade-lead strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Two selectable billing cards; collapses to one full-width card when a
+   single interval is offered (auto-fit). Selection drives the CTA. */
+.upgrade-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.upgrade-plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  text-align: left;
+  background: var(--bg-subtle);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+.upgrade-plan-card:hover {
+  background: var(--bg-hover);
+}
+.upgrade-plan-card:active {
+  transform: translateY(1px);
+}
+.upgrade-plan-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.upgrade-plan-card.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+/* Selected-state check badge, top-right corner. */
+.upgrade-plan-card.selected::after {
+  content: "✓";
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+.upgrade-plan-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 20px;
+  padding-right: var(--sp-6); /* leave room for the corner check */
+}
+.upgrade-plan-cadence {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.upgrade-plan-card.selected .upgrade-plan-cadence {
+  color: var(--accent);
+}
+.upgrade-save-badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-on-accent);
+  background: var(--accent-gradient);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  line-height: 1.4;
+}
+.upgrade-price {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.upgrade-amount {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.05;
+}
+.upgrade-per {
+  font-size: var(--fs-md);
+  color: var(--text-secondary);
+}
+.upgrade-plan-note {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.upgrade-features {
+  list-style: none;
+  margin: var(--sp-6) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.upgrade-features li {
+  position: relative;
+  padding-left: var(--sp-8);
+  font-size: var(--fs-md);
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+.upgrade-features li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.upgrade-cta {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-lg);
+  background: var(--accent-gradient);
+  box-shadow: var(--shadow-md);
+}
+.upgrade-cta:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Waiting / timeout / success phases — scaled to match the plan surface. */
+.upgrade-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-5) var(--sp-5);
+}
+.upgrade-waiting .btn-spinner.accent {
+  width: 32px;
+  height: 32px;
+  border-width: 3px;
+  border-color: var(--accent-soft);
+  border-top-color: var(--accent);
+  margin-bottom: var(--sp-1);
+}
+.upgrade-waiting .subhead {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-primary);
+}
+.upgrade-waiting .muted {
+  max-width: 36ch;
+}
+.upgrade-waiting .primary.sm {
+  margin-top: var(--sp-2);
+}
+
+.upgrade-success-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--sp-1);
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: var(--fs-2xl);
+  font-weight: 700;
+  animation: upgrade-pop 420ms var(--ease-spring) both;
+}
+/* One tasteful expanding ring on entrance. */
+.upgrade-success-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  animation: upgrade-ring 700ms var(--ease) both;
+}
+@keyframes upgrade-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes upgrade-ring {
+  from {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.7);
+  }
 }

@@ -49,6 +49,39 @@ export const config = {
    *  on email+password alone. Set only via env (never committed). */
   googleClientId: optional("GOOGLE_CLIENT_ID"),
   googleClientSecret: optional("GOOGLE_CLIENT_SECRET"),
+  // ---- Subscription billing (Polar) ----
+  /** Polar organization access token. Its presence is the ON switch for the
+   *  whole billing feature (see `billingEnabled` below): unset ⇒ billing is
+   *  disabled, no free-tier limits are enforced (self-host = unlimited), and
+   *  every billing route except GET /api/billing/config returns 404. Set only
+   *  via env, never committed. */
+  polarAccessToken: optional("POLAR_ACCESS_TOKEN"),
+  /** Shared secret for verifying Polar webhook signatures (Standard Webhooks). */
+  polarWebhookSecret: optional("POLAR_WEBHOOK_SECRET"),
+  /** Which Polar API to hit: 'sandbox' (default) or 'production'. */
+  polarServer: optional("POLAR_SERVER") ?? "sandbox",
+  /** Polar product ids for the monthly / yearly Pro plan (from the Polar
+   *  dashboard). Checkout picks one based on the requested interval. */
+  polarProductMonthlyId: optional("POLAR_PRODUCT_MONTHLY_ID"),
+  polarProductYearlyId: optional("POLAR_PRODUCT_YEARLY_ID"),
+  /** Free-tier caps (only enforced when billing is enabled). A user may OWN up
+   *  to this many UNSUBSCRIBED workspaces; each unsubscribed workspace may hold
+   *  up to this many members (incl. pending invitations). */
+  freeMaxWorkspaces: int("FREE_MAX_WORKSPACES", 3),
+  freeMaxMembers: int("FREE_MAX_MEMBERS", 3),
 } as const;
+
+/**
+ * Billing is enabled iff a Polar access token is configured — mirrors the
+ * `googleEnabled` env-presence pattern. When disabled, self-hosters get an
+ * unlimited, unmetered product (no caps, config reports `{ enabled: false }`).
+ *
+ * Evaluated live from the environment (not captured at import) so the switch is
+ * deterministic under test toggling; production sets it once and never changes.
+ */
+export function billingEnabled(): boolean {
+  const t = process.env.POLAR_ACCESS_TOKEN;
+  return t !== undefined && t !== "";
+}
 
 export type AppConfig = typeof config;

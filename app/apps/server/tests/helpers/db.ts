@@ -10,6 +10,8 @@ export async function ensureMigrated(): Promise<void> {
 }
 
 const TABLES = [
+  "billing_events",
+  "subscriptions",
   "mcp_tokens",
   "shares",
   "notes",

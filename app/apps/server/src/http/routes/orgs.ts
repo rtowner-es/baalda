@@ -3,6 +3,9 @@ import { Hono } from "hono";
 import { pool } from "../../db/pool.js";
 import { orgRole } from "../../permissions/lookup.js";
 import { getSession } from "../session.js";
+import { canAddMember } from "../../billing/entitlements.js";
+import { billingEnabled } from "../../config.js";
+import type { BillingProvider } from "../../billing/provider.js";
 
 /**
  * Workspace (org) routes (session-authenticated).
@@ -21,6 +24,9 @@ import { getSession } from "../session.js";
 export interface OrgDeps {
   /** Force-close live sync sockets for a doc (so a purge isn't re-populated). */
   disconnectDoc: (vaultId: string, docId: string) => void;
+  /** Billing provider for best-effort subscription cancellation on org delete.
+   *  Absent (self-host / billing off) ⇒ deletion just relies on FK cascade. */
+  billingProvider?: BillingProvider;
 }
 
 // Crockford-style base32 alphabet: no ambiguous 0/O/1/I. 32 symbols.
@@ -123,6 +129,14 @@ export function createOrgRoutes(deps: OrgDeps): Hono {
       return c.json({ organizationId, name: target.name, alreadyMember: true });
     }
 
+    // Free-tier seat cap. This path bypasses Better Auth entirely, so the same
+    // limit the invite hook enforces must be checked here before the INSERT.
+    // No-op when billing is off (canAddMember returns allowed).
+    const seat = await canAddMember(organizationId);
+    if (!seat.allowed) {
+      return c.json({ error: "member_limit_reached", limit: seat.limit }, 402);
+    }
+
     await pool.query(
       `INSERT INTO member (id, "organizationId", "userId", role, "createdAt")
        VALUES ($1, $2, $3, 'member', now())`,
@@ -165,6 +179,27 @@ export function createOrgRoutes(deps: OrgDeps): Hono {
 
     // Instant-kill live sockets so onChange can't resurrect purged doc_updates.
     for (const d of docs.rows) deps.disconnectDoc(d.vault_id, d.id);
+
+    // Best-effort: cancel any live subscription at the provider so we don't keep
+    // billing a deleted workspace. The subscriptions row itself is removed by FK
+    // cascade below; a provider failure must NOT block the delete (log + carry on).
+    if (billingEnabled() && deps.billingProvider) {
+      const sub = await pool.query<{ provider_subscription_id: string | null }>(
+        "SELECT provider_subscription_id FROM subscriptions WHERE organization_id = $1",
+        [orgId],
+      );
+      const subId = sub.rows[0]?.provider_subscription_id;
+      if (subId) {
+        try {
+          await deps.billingProvider.cancelSubscription(subId);
+        } catch (err) {
+          console.error(
+            `org-delete: failed to cancel subscription ${subId} for org ${orgId}:`,
+            (err as Error).message,
+          );
+        }
+      }
+    }
 
     const client = await pool.connect();
     try {

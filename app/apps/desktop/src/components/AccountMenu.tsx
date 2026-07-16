@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { type McpToolInfo, type McpTokenRow } from "../lib/api";
 import { ITEM_COLORS, itemColorValue } from "../lib/appearance";
 import { authManager } from "../lib/auth/authManager";
+import { classifyLimitError, type LimitKind, limitFromError } from "../lib/billing";
 import * as ipc from "../lib/ipc";
 import {
   checkForUpdate,
@@ -14,6 +15,7 @@ import { AccessPanel } from "./AccessPanel";
 import { AccountSettings } from "./AccountSettings";
 import { Avatar, SyncBadge } from "./Identity";
 import { ThemeToggle } from "./ThemeToggle";
+import { UpgradeDialog } from "./UpgradeDialog";
 
 /**
  * Account & workspace menu (spec 04 §2/§6/§7), redesigned as the standard
@@ -175,6 +177,7 @@ function AccountPopover({
   const [joining, setJoining] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (!session) return null;
@@ -184,10 +187,13 @@ function AccountPopover({
   const createOrg = async () => {
     if (!orgName.trim()) return;
     setBusy(true);
+    setCreateError(null);
     try {
       await useStore.getState().createOrganization(orgName.trim());
       setOrgName("");
       setCreating(false);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -286,21 +292,24 @@ function AccountPopover({
       })}
 
       {creating ? (
-        <div className="menu-create-org">
-          <input
-            autoFocus
-            placeholder="Workspace name"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void createOrg();
-              if (e.key === "Escape") setCreating(false);
-            }}
-          />
-          <button className="primary sm" disabled={busy} onClick={() => void createOrg()}>
-            Create
-          </button>
-        </div>
+        <>
+          <div className="menu-create-org">
+            <input
+              autoFocus
+              placeholder="Workspace name"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void createOrg();
+                if (e.key === "Escape") setCreating(false);
+              }}
+            />
+            <button className="primary sm" disabled={busy} onClick={() => void createOrg()}>
+              Create
+            </button>
+          </div>
+          {createError && <div className="auth-error">{createError}</div>}
+        </>
       ) : (
         <button className="menu-item subtle" onClick={() => setCreating(true)}>
           <span className="menu-swatch plus" aria-hidden="true">
@@ -612,8 +621,10 @@ function AuthDialog({ onClose }: { onClose: () => void }) {
 type SettingsTab =
   | "workspaces"
   | "members"
+  | "billing"
   | "access"
   | "mcp"
+  | "import-export"
   | "appearance"
   | "updates";
 
@@ -662,6 +673,17 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; icon: React.ReactNo
     ),
   },
   {
+    id: "import-export",
+    label: "Import / Export",
+    icon: (
+      <MenuIcon>
+        <path d="M12 3v10" />
+        <path d="m8 9 4 4 4-4" />
+        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+      </MenuIcon>
+    ),
+  },
+  {
     id: "appearance",
     label: "Appearance",
     icon: (
@@ -683,6 +705,18 @@ const SETTINGS_TABS: Array<{ id: SettingsTab; label: string; icon: React.ReactNo
   },
 ];
 
+/** The Billing tab, inserted after Members only when the server has billing on. */
+const BILLING_TAB: { id: SettingsTab; label: string; icon: React.ReactNode } = {
+  id: "billing",
+  label: "Billing",
+  icon: (
+    <MenuIcon>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </MenuIcon>
+  ),
+};
+
 /**
  * Workspace settings — a dedicated full page (not a modal): everything about
  * the workspace lives here. Members (roster + join code + invites),
@@ -692,6 +726,7 @@ function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
   const session = useStore((s) => s.session);
   const organizations = useStore((s) => s.organizations);
   const members = useStore((s) => s.members);
+  const billingConfig = useStore((s) => s.billingConfig);
 
   const [tab, setTab] = useState<SettingsTab>("workspaces");
 
@@ -703,12 +738,23 @@ function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Billing only appears when the server actually offers it (and the user is
+  // signed in — guaranteed here since this whole page requires a session).
+  const billingEnabled = billingConfig?.enabled === true;
+  const tabs = useMemo(() => {
+    if (!billingEnabled) return SETTINGS_TABS;
+    const out = [...SETTINGS_TABS];
+    const idx = out.findIndex((t) => t.id === "members");
+    out.splice(idx >= 0 ? idx + 1 : out.length, 0, BILLING_TAB);
+    return out;
+  }, [billingEnabled]);
+
   if (!session) return null;
   const activeOrg =
     organizations.find((o) => o.id === session.activeOrganizationId) ?? null;
   const myMember = members.find((m) => m.userId === session.user.id);
   const canManage = myMember?.role === "owner" || myMember?.role === "admin";
-  const activeTab = SETTINGS_TABS.find((t) => t.id === tab)!;
+  const activeTab = tabs.find((t) => t.id === tab) ?? tabs[0];
 
   return (
     <div className="settings-page">
@@ -724,7 +770,7 @@ function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
 
       <div className="settings-body">
         <nav className="settings-nav" aria-label="Settings sections">
-          {SETTINGS_TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -743,10 +789,14 @@ function WorkspaceSettingsDialog({ onClose }: { onClose: () => void }) {
             <WorkspacesTab />
           ) : tab === "members" ? (
             <MembersTab canManage={canManage} />
+          ) : tab === "billing" ? (
+            <BillingTab canManage={canManage} />
           ) : tab === "access" ? (
             <AccessPanel canManage={canManage} />
           ) : tab === "mcp" ? (
             <McpTab />
+          ) : tab === "import-export" ? (
+            <ImportExportTab />
           ) : tab === "updates" ? (
             <UpdatesTab />
           ) : (
@@ -780,6 +830,11 @@ function WorkspacesTab() {
   // orgId whose permanent deletion is awaiting a second confirming click.
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Free-plan workspace-cap hit while creating — shows an upgrade nudge instead.
+  const [limitNudge, setLimitNudge] = useState<{ kind: LimitKind; limit: number | null } | null>(
+    null,
+  );
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -857,11 +912,19 @@ function WorkspacesTab() {
   const createOrg = async () => {
     if (!orgName.trim()) return;
     setBusy(true);
+    setActionError(null);
+    setLimitNudge(null);
     try {
       await useStore.getState().createOrganization(orgName.trim());
       setOrgName("");
       setCreating(false);
       setBound(readOrgVaults());
+    } catch (e) {
+      // A 402 workspace-cap rejection becomes an upgrade nudge; anything else is
+      // a real error (previously swallowed silently — that was the create bug).
+      const kind = classifyLimitError(e);
+      if (kind) setLimitNudge({ kind, limit: limitFromError(e) });
+      else setActionError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -1023,6 +1086,13 @@ function WorkspacesTab() {
       </div>
       {joinError && <div className="auth-error">{joinError}</div>}
       {actionError && <div className="auth-error">{actionError}</div>}
+      {limitNudge && (
+        <LimitNudge
+          kind={limitNudge.kind}
+          limit={limitNudge.limit}
+          onUpgrade={() => setUpgradeOpen(true)}
+        />
+      )}
 
       <div className="menu-sep" />
       <div className="subhead">Workspace folder location</div>
@@ -1039,6 +1109,8 @@ function WorkspacesTab() {
           Change…
         </button>
       </div>
+
+      {upgradeOpen && <UpgradeDialog onClose={() => setUpgradeOpen(false)} />}
     </>
   );
 }
@@ -1053,6 +1125,12 @@ function MembersTab({ canManage }: { canManage: boolean }) {
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Invite errors had no home before — surface them here (silent-failure fix).
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [limitNudge, setLimitNudge] = useState<{ kind: LimitKind; limit: number | null } | null>(
+    null,
+  );
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   // The workspace's shareable join code (owner/admin only; server creates it
   // lazily). Older servers without the endpoint simply hide the section.
@@ -1084,9 +1162,17 @@ function MembersTab({ canManage }: { canManage: boolean }) {
   const invite = async () => {
     if (!inviteEmail.trim()) return;
     setBusy(true);
+    setInviteError(null);
+    setLimitNudge(null);
     try {
       await useStore.getState().inviteMember(inviteEmail.trim(), inviteRole);
       setInviteEmail("");
+    } catch (e) {
+      // A 402 member-cap rejection becomes an upgrade nudge; anything else is a
+      // real error (this tab had no error slot before — that was the bug).
+      const kind = classifyLimitError(e);
+      if (kind) setLimitNudge({ kind, limit: limitFromError(e) });
+      else setInviteError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -1132,6 +1218,14 @@ function MembersTab({ canManage }: { canManage: boolean }) {
           </button>
         </div>
       )}
+      {inviteError && <div className="auth-error">{inviteError}</div>}
+      {limitNudge && (
+        <LimitNudge
+          kind={limitNudge.kind}
+          limit={limitNudge.limit}
+          onUpgrade={() => setUpgradeOpen(true)}
+        />
+      )}
 
       <div className="subhead">In this workspace ({members.length})</div>
       <ul className="member-list">
@@ -1164,7 +1258,193 @@ function MembersTab({ canManage }: { canManage: boolean }) {
           </ul>
         </>
       )}
+
+      {upgradeOpen && <UpgradeDialog onClose={() => setUpgradeOpen(false)} />}
     </>
+  );
+}
+
+/**
+ * BillingTab: this workspace's plan + seat usage (spec 04). Facts are visible to
+ * every member (read-only); the Upgrade/Manage actions are gated to owners/admins
+ * the same way MembersTab gates its controls. Only rendered when the server has
+ * billing enabled (the tab itself is hidden otherwise).
+ */
+function BillingTab({ canManage }: { canManage: boolean }) {
+  const billingConfig = useStore((s) => s.billingConfig);
+  const orgBilling = useStore((s) => s.orgBilling);
+  const orgId = useStore((s) => s.session?.activeOrganizationId ?? null);
+
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Refresh seat usage / plan whenever this tab is opened.
+  useEffect(() => {
+    void useStore.getState().refreshOrgBilling();
+  }, []);
+
+  const manage = async () => {
+    if (!orgId || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await authManager.api.getBillingPortalUrl(orgId);
+      await ipc.openExternal(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!billingConfig?.enabled) {
+    return (
+      <div className="muted perm-empty">Billing isn't enabled on this server.</div>
+    );
+  }
+  if (!orgId) {
+    return (
+      <div className="muted perm-empty">
+        Billing needs an active workspace — create or switch to one first.
+      </div>
+    );
+  }
+  if (!orgBilling) {
+    return <div className="muted">Loading…</div>;
+  }
+
+  const isPro = orgBilling.plan === "pro";
+  const { members, pendingInvitations, limit } = orgBilling.seats;
+  const used = members + pendingInvitations;
+
+  return (
+    <>
+      {isPro ? (
+        <div className="billing-card plan-pro">
+          <div className="billing-plan-head">
+            <span className="billing-plan-name">Pro</span>
+            <span className={`billing-status ${orgBilling.status}`}>
+              {orgBilling.status === "past_due"
+                ? "Past due"
+                : orgBilling.status === "canceled"
+                  ? "Canceled"
+                  : "Active"}
+            </span>
+          </div>
+          <div className="muted">Everything unlimited on this workspace.</div>
+          {orgBilling.currentPeriodEnd && (
+            <div className="menu-row">
+              <span className="menu-row-label">
+                {orgBilling.cancelAtPeriodEnd ? "Access until" : "Renews"}
+              </span>
+              <span>{formatDate(orgBilling.currentPeriodEnd)}</span>
+            </div>
+          )}
+          {orgBilling.cancelAtPeriodEnd && (
+            <div className="limit-nudge">
+              <span>
+                Your subscription is set to cancel at the end of the current period.
+              </span>
+            </div>
+          )}
+          {error && <div className="auth-error">{error}</div>}
+          {canManage ? (
+            <button
+              className="secondary billing-action"
+              disabled={busy}
+              aria-busy={busy}
+              onClick={() => void manage()}
+            >
+              {busy && <span className="btn-spinner" aria-hidden="true" />}
+              <span>Manage subscription</span>
+            </button>
+          ) : (
+            <div className="muted">Ask an owner or admin to manage the subscription.</div>
+          )}
+        </div>
+      ) : (
+        <div className="billing-card">
+          <div className="billing-plan-head">
+            <span className="billing-plan-name">Free</span>
+          </div>
+          <div className="menu-row">
+            <span className="menu-row-label">Members</span>
+            <span>
+              {used} of {limit ?? "∞"}
+              {limit != null && used >= limit ? " · full" : ""}
+            </span>
+          </div>
+          {pendingInvitations > 0 && (
+            <div className="muted">
+              Includes {pendingInvitations} pending invitation
+              {pendingInvitations === 1 ? "" : "s"}.
+            </div>
+          )}
+
+          <div className="subhead">Upgrade to Pro unlocks</div>
+          <ul className="upgrade-features">
+            <li>Unlimited team members</li>
+            <li>Unlimited notes, devices &amp; AI edits</li>
+            <li>Doesn't count toward your free workspaces</li>
+            <li>Priority support</li>
+          </ul>
+
+          {error && <div className="auth-error">{error}</div>}
+          {canManage ? (
+            <button className="primary billing-action" onClick={() => setUpgradeOpen(true)}>
+              Upgrade to Pro
+            </button>
+          ) : (
+            <div className="muted">Ask an owner or admin to upgrade this workspace.</div>
+          )}
+        </div>
+      )}
+
+      {upgradeOpen && <UpgradeDialog onClose={() => setUpgradeOpen(false)} />}
+    </>
+  );
+}
+
+/** Compact absolute date for renewal/period-end lines. */
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+/**
+ * Inline upgrade nudge shown in the create-workspace / invite-member error slot
+ * when the server rejects with a 402 free-plan limit. Styled with --warning-soft
+ * (reserved for upgrade nudges), not the danger palette — this isn't an error.
+ */
+function LimitNudge({
+  kind,
+  limit,
+  onUpgrade,
+}: {
+  kind: LimitKind;
+  limit: number | null;
+  onUpgrade: () => void;
+}) {
+  const freeLimits = useStore((s) => s.billingConfig?.freeLimits);
+  const n =
+    limit ??
+    (kind === "member_limit"
+      ? freeLimits?.membersPerWorkspace
+      : freeLimits?.workspacesPerUser) ??
+    3;
+  const message =
+    kind === "member_limit"
+      ? `Free plan limit reached — this workspace allows ${n} member${n === 1 ? "" : "s"}.`
+      : `You have ${n} free workspace${n === 1 ? "" : "s"}. Upgrade a workspace to Pro to create more.`;
+  return (
+    <div className="limit-nudge">
+      <span>{message}</span>
+      <button className="link-btn" onClick={onUpgrade}>
+        Upgrade →
+      </button>
+    </div>
   );
 }
 
@@ -1560,6 +1840,114 @@ const APPEARANCE_ICON = {
     </svg>
   ),
 };
+
+function importSummaryText(s: ipc.ImportSummary): string {
+  const parts = [`Imported ${s.files} file${s.files === 1 ? "" : "s"}`];
+  if (s.skipped > 0) parts.push(`${s.skipped} skipped`);
+  return parts.join(" · ") + ".";
+}
+
+/**
+ * Import / Export — vault-level data operations on the open local vault. Imports
+ * land at the vault root; exports copy out to a chosen folder. The same commands
+ * back the sidebar ⋮ menu and drag-and-drop, so behavior is identical everywhere.
+ */
+function ImportExportTab() {
+  const [busy, setBusy] = useState<null | "files" | "folder" | "export">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    await useStore.getState().refreshTree();
+    await useStore.getState().refreshTitles();
+  }
+
+  async function run(
+    kind: "files" | "folder" | "export",
+    fn: () => Promise<string | null>,
+  ) {
+    setBusy(kind);
+    setError(null);
+    setMsg(null);
+    try {
+      const result = await fn();
+      if (result) setMsg(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const importFiles = () =>
+    run("files", async () => {
+      const sources = await ipc.pickFiles();
+      if (!sources || sources.length === 0) return null;
+      const summary = await ipc.importPaths("", sources);
+      await refresh();
+      return importSummaryText(summary);
+    });
+
+  const importFolder = () =>
+    run("folder", async () => {
+      const src = await ipc.pickFolder();
+      if (!src) return null;
+      const summary = await ipc.importPaths("", [src]);
+      await refresh();
+      return importSummaryText(summary);
+    });
+
+  const exportVault = () =>
+    run("export", async () => {
+      const dest = await ipc.pickFolder();
+      if (!dest) return null;
+      await ipc.exportPath("", dest);
+      return "Exported the vault.";
+    });
+
+  return (
+    <div className="io-tab">
+      <section className="io-section">
+        <h3 className="io-heading">Import</h3>
+        <p className="io-desc">
+          Bring existing files and folders into this vault — any format. Markdown and text
+          become notes; everything else is kept as-is, with its folder structure. Existing
+          names are never overwritten.
+        </p>
+        <div className="io-actions">
+          <button className="primary" disabled={busy !== null} onClick={() => void importFiles()}>
+            {busy === "files" ? "Importing…" : "Import files…"}
+          </button>
+          <button className="primary" disabled={busy !== null} onClick={() => void importFolder()}>
+            {busy === "folder" ? "Importing…" : "Import folder…"}
+          </button>
+        </div>
+        <p className="io-hint">
+          You can also right-click any folder in the sidebar, or drag files straight onto it.
+        </p>
+      </section>
+
+      <section className="io-section">
+        <h3 className="io-heading">Export</h3>
+        <p className="io-desc">
+          Save a copy of this whole vault to a folder on your computer. The hidden{" "}
+          <code>.context</code> index is skipped.
+        </p>
+        <div className="io-actions">
+          <button className="primary" disabled={busy !== null} onClick={() => void exportVault()}>
+            {busy === "export" ? "Exporting…" : "Export entire vault…"}
+          </button>
+        </div>
+      </section>
+
+      {error ? (
+        <div className="auth-error">{error}</div>
+      ) : (
+        msg && <div className="io-result">{msg}</div>
+      )}
+    </div>
+  );
+}
 
 function AppearanceTab() {
   const itemColors = useStore((s) => s.itemColors);

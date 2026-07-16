@@ -10,8 +10,10 @@ import { readItemColors, writeItemColors } from "./lib/appearance";
 import { readItemOrder, writeItemOrder, type ItemOrder } from "./lib/ordering";
 import {
   ApiError,
+  type BillingConfig,
   type Invitation,
   type Member,
+  type OrgBilling,
   type Organization,
   type SessionInfo,
   type Share,
@@ -81,6 +83,13 @@ interface AppStore {
   /** Set when the active workspace still needs a local folder chosen. */
   pendingWorkspaceFolder: PendingWorkspaceFolder | null;
 
+  // ---- Billing (subscription) ----
+  /** Server billing capability; null until first probed. `enabled === false`
+   *  (self-host / older server) means the whole billing UI stays hidden. */
+  billingConfig: BillingConfig | null;
+  /** The active workspace's subscription state + seat usage; null when unknown. */
+  orgBilling: OrgBilling | null;
+
   // ---- Account-level preferences (follow the app, not any workspace) ----
   /** The user's chosen activity status; broadcast to teammates via presence. */
   activityStatus: ActivityStatus;
@@ -147,6 +156,12 @@ interface AppStore {
     principalId: string | null,
   ) => Promise<void>;
   removeLock: (shareId: string) => Promise<void>;
+
+  // Billing
+  /** Re-probe server billing capability (on start/sign-in/server change). */
+  refreshBillingConfig: () => Promise<void>;
+  /** Refresh the active workspace's subscription state + seats. */
+  refreshOrgBilling: () => Promise<void>;
 
   // Sync
   setSyncStatus: (status: SyncStatus) => void;
@@ -242,6 +257,8 @@ export const useStore = create<AppStore>((set, get) => ({
   itemColors: {},
   itemOrder: {},
   pendingWorkspaceFolder: null,
+  billingConfig: null,
+  orgBilling: null,
   activityStatus: readActivityStatus(),
   mentionSound: readMentionSound(),
 
@@ -349,6 +366,8 @@ export const useStore = create<AppStore>((set, get) => ({
       if (session) {
         set({ session, authStatus: "signed-in", authError: null });
         await get().refreshWorkspace();
+        await get().refreshBillingConfig();
+        await get().refreshOrgBilling();
         await get().enableSyncForVault();
       } else {
         set({ session: null, authStatus: "signed-out" });
@@ -366,6 +385,8 @@ export const useStore = create<AppStore>((set, get) => ({
       set({ session, authStatus: session ? "signed-in" : "signed-out" });
       if (session) {
         await get().refreshWorkspace();
+        await get().refreshBillingConfig();
+        await get().refreshOrgBilling();
         await get().enableSyncForVault();
         await get().openWelcomeIfPresent();
       }
@@ -383,6 +404,8 @@ export const useStore = create<AppStore>((set, get) => ({
       set({ session, authStatus: session ? "signed-in" : "signed-out" });
       if (session) {
         await get().refreshWorkspace();
+        await get().refreshBillingConfig();
+        await get().refreshOrgBilling();
         await get().enableSyncForVault();
         await get().openWelcomeIfPresent();
       }
@@ -398,7 +421,11 @@ export const useStore = create<AppStore>((set, get) => ({
       await authManager.signUp({ name, email, password });
       const session = await authManager.currentSession();
       set({ session, authStatus: session ? "signed-in" : "signed-out" });
-      if (session) await get().refreshWorkspace();
+      if (session) {
+        await get().refreshWorkspace();
+        await get().refreshBillingConfig();
+        await get().refreshOrgBilling();
+      }
     } catch (e) {
       set({ authError: errMsg(e) });
       throw e;
@@ -426,6 +453,8 @@ export const useStore = create<AppStore>((set, get) => ({
       syncStatus: "offline",
       locks: [],
       pendingWorkspaceFolder: null,
+      billingConfig: null,
+      orgBilling: null,
       // Close the open vault so the app returns to the VaultPicker "home" screen
       // (choose / reopen a vault) instead of leaving the old workspace's files
       // on screen after sign-out.
@@ -449,10 +478,12 @@ export const useStore = create<AppStore>((set, get) => ({
     });
     if (session) {
       await get().refreshWorkspace();
+      await get().refreshBillingConfig();
+      await get().refreshOrgBilling();
       await get().enableSyncForVault();
     } else {
       syncManager.disable();
-      set({ syncEnabled: false });
+      set({ syncEnabled: false, billingConfig: null, orgBilling: null });
     }
   },
 
@@ -543,6 +574,8 @@ export const useStore = create<AppStore>((set, get) => ({
     const session = await authManager.currentSession();
     set({ session });
     await get().refreshWorkspace();
+    // Seat usage + plan are per-workspace, so refresh on every switch.
+    await get().refreshOrgBilling();
 
     // Each workspace owns its own local folder. If one is already bound, swap
     // to it. If not, do NOT reuse the folder that's currently open — ask the
@@ -699,6 +732,30 @@ export const useStore = create<AppStore>((set, get) => ({
   removeLock: async (shareId) => {
     await authManager.api.revokeShare(shareId);
     await get().refreshLocks();
+  },
+
+  // ---- Billing ----
+
+  refreshBillingConfig: async () => {
+    // getBillingConfig never throws — it returns { enabled: false } on any
+    // failure (older/self-hosted server), so the billing UI simply stays hidden.
+    const billingConfig = await authManager.api.getBillingConfig();
+    set({ billingConfig });
+  },
+
+  refreshOrgBilling: async () => {
+    const orgId = get().session?.activeOrganizationId;
+    if (!orgId || !get().billingConfig?.enabled) {
+      set({ orgBilling: null });
+      return;
+    }
+    try {
+      const orgBilling = await authManager.api.getOrgBilling(orgId);
+      set({ orgBilling });
+    } catch (e) {
+      console.warn("[billing] refresh failed", e);
+      set({ orgBilling: null });
+    }
   },
 
   // ---- Sync ----

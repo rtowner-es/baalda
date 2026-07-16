@@ -165,6 +165,36 @@ export interface VaultSyncTokenResponse {
   vaultId: string;
 }
 
+// ---- Billing (subscription) ----------------------------------------------
+
+/** One purchasable plan variant (e.g. Pro monthly / yearly). Amount is in the
+ *  currency's minor units (cents). */
+export interface BillingPlan {
+  id: string;
+  label: string;
+  amount: number;
+  currency: string;
+  interval: "month" | "year";
+}
+
+/** Server-wide billing capability (public; no auth). `enabled: false` means the
+ *  server has no billing configured — a self-host runs with unlimited limits. */
+export interface BillingConfig {
+  enabled: boolean;
+  plans?: BillingPlan[];
+  freeLimits?: { workspacesPerUser: number; membersPerWorkspace: number };
+}
+
+/** A single workspace's subscription state + seat usage. */
+export interface OrgBilling {
+  plan: "free" | "pro";
+  status: "none" | "active" | "past_due" | "canceled";
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  /** `limit: null` = unlimited (paid). */
+  seats: { members: number; pendingInvitations: number; limit: number | null };
+}
+
 /** A rejected server response — carries the HTTP status for callers to branch on. */
 export class ApiError extends Error {
   constructor(
@@ -533,6 +563,55 @@ export class ApiClient {
 
   async revokeMcpToken(id: string): Promise<void> {
     await this.request<unknown>("DELETE", `/api/mcp/tokens/${encodeURIComponent(id)}`);
+  }
+
+  // ---- Billing (subscription) ---------------------------------------------
+
+  /**
+   * Server billing capability. Public (no auth). Mirrors {@link getAuthMethods}'
+   * capability-probe pattern: ANY failure (older/self-hosted server without the
+   * endpoint, network error) is treated as "billing disabled" so the UI simply
+   * hides all billing affordances and enforces no limits.
+   */
+  async getBillingConfig(): Promise<BillingConfig> {
+    try {
+      const { data } = await this.request<BillingConfig>("GET", "/api/billing/config");
+      if (!data || data.enabled !== true) return { enabled: false };
+      return { enabled: true, plans: data.plans, freeLimits: data.freeLimits };
+    } catch {
+      return { enabled: false };
+    }
+  }
+
+  /** A workspace's subscription state + seat usage (any member of the org). */
+  async getOrgBilling(orgId: string): Promise<OrgBilling> {
+    const { data } = await this.request<OrgBilling>(
+      "GET",
+      `/api/billing/orgs/${encodeURIComponent(orgId)}`,
+    );
+    return data;
+  }
+
+  /** Start a hosted checkout for the org; returns the URL to open (owner/admin). */
+  async createBillingCheckout(
+    orgId: string,
+    interval: "month" | "year",
+  ): Promise<{ url: string }> {
+    const { data } = await this.request<{ url: string }>(
+      "POST",
+      `/api/billing/orgs/${encodeURIComponent(orgId)}/checkout`,
+      { body: { interval } },
+    );
+    return data;
+  }
+
+  /** Get the customer portal URL to manage/cancel the subscription (owner/admin). */
+  async getBillingPortalUrl(orgId: string): Promise<{ url: string }> {
+    const { data } = await this.request<{ url: string }>(
+      "POST",
+      `/api/billing/orgs/${encodeURIComponent(orgId)}/portal`,
+    );
+    return data;
   }
 
   // ---- Registry -----------------------------------------------------------

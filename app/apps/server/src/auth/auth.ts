@@ -1,9 +1,11 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { bearer, mcp, organization } from "better-auth/plugins";
 import { Algorithm, hash as argonHash, verify as argonVerify } from "@node-rs/argon2";
 import pg from "pg";
 import { config } from "../config.js";
 import { BRAND_NAME } from "../brand.js";
+import { canAddMember, canCreateOrganization } from "../billing/entitlements.js";
 
 /**
  * Better Auth (spec 04 §1/§2).
@@ -89,6 +91,34 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
       invitationExpiresIn: config.invitationExpiresInSeconds, // 48h
+      // Free-tier enforcement (spec: subscription billing). These run inside
+      // Better Auth's create-organization / create-invitation endpoints and
+      // throw an APIError with statusCode 402 whose message carries the
+      // contract token ("workspace_limit_reached" / "member_limit_reached").
+      // The desktop keys off HTTP 402 + the token; a no-op when billing is off
+      // (the entitlement helpers short-circuit to "allowed").
+      organizationHooks: {
+        beforeCreateOrganization: async (data) => {
+          const { allowed, limit } = await canCreateOrganization(data.user.id);
+          if (!allowed) {
+            throw new APIError("PAYMENT_REQUIRED", {
+              message: "workspace_limit_reached",
+              error: "workspace_limit_reached",
+              limit,
+            });
+          }
+        },
+        beforeCreateInvitation: async (data) => {
+          const { allowed, limit } = await canAddMember(data.organization.id);
+          if (!allowed) {
+            throw new APIError("PAYMENT_REQUIRED", {
+              message: "member_limit_reached",
+              error: "member_limit_reached",
+              limit,
+            });
+          }
+        },
+      },
     }),
     // OAuth 2.1 authorization server for MCP clients (spec: MCP integration).
     // Lets a Claude "custom connector" run the standard discovery → dynamic
