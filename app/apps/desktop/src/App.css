@@ -3565,7 +3565,8 @@ button.secondary:disabled {
    Upgrade dialog — first-class plan-selection surface
    ============================================================ */
 .upgrade-dialog {
-  width: 480px;
+  /* Compact so the page shows around it rather than the dialog dominating. */
+  width: 440px;
 }
 .upgrade-lead {
   margin: 0 0 var(--sp-5);
