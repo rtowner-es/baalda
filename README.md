@@ -15,8 +15,13 @@
 
 </div>
 
-<!-- Add a screenshot or short demo GIF here for the best first impression:
-     ![Baalda](docs/screenshot.png) -->
+<div align="center">
+
+<video src="https://github.com/naveedharri/baalda/raw/main/docs/baalda-product-film.mp4" controls muted loop playsinline width="80%"></video>
+
+[▶ Watch the product film](https://github.com/naveedharri/baalda/raw/main/docs/baalda-product-film.mp4)
+
+</div>
 
 ---
 
