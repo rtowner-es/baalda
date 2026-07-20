@@ -12,9 +12,5 @@
     "dev:server": "npm run dev --workspace=server",
     "build:desktop": "npm run tauri build --workspace=desktop",
     "test": "npm run test --workspaces --if-present"
-  },
-  "allowScripts": {
-    "esbuild@0.28.1": true,
-    "fsevents@2.3.3": true
   }
 }
