@@ -121,8 +121,14 @@ export function wikilinks(opts: WikilinkOptions) {
       decorations: (v) => v.decorations,
       eventHandlers: {
         mousedown(event, view) {
-          const target = event.target as HTMLElement;
-          if (!target.classList.contains("cm-wikilink")) return false;
+          // The syntax highlighter nests its own spans *inside* the
+          // `cm-wikilink` mark, so a click usually lands on a child span that
+          // doesn't carry the class — walk up to the link element (same
+          // pattern as the cm-md-link handler in livePreview).
+          const target = (event.target as HTMLElement).closest(
+            ".cm-wikilink"
+          ) as HTMLElement | null;
+          if (!target) return false;
           const pos = view.posAtDOM(target);
           const name = targetAtPos(view, pos);
           if (name) {
