@@ -35,6 +35,8 @@ interface DocLocation {
   vaultId: string;
   folderId: string | null;
   organizationId: string;
+  /** Creator of the note (null for files, which have no creator column). */
+  createdBy: string | null;
 }
 
 /**
@@ -49,12 +51,13 @@ async function locateDoc(
     vault_id: string;
     folder_id: string | null;
     organization_id: string;
+    created_by: string | null;
   }>(
-    `SELECT loc.vault_id, loc.folder_id, v.organization_id
+    `SELECT loc.vault_id, loc.folder_id, loc.created_by, v.organization_id
        FROM (
-         SELECT vault_id, folder_id FROM notes  WHERE id = $1 AND deleted_at IS NULL
+         SELECT vault_id, folder_id, created_by FROM notes  WHERE id = $1 AND deleted_at IS NULL
          UNION ALL
-         SELECT vault_id, folder_id FROM files  WHERE id = $1
+         SELECT vault_id, folder_id, NULL::text FROM files  WHERE id = $1
        ) loc
        JOIN vaults v ON v.id = loc.vault_id
       LIMIT 1`,
@@ -66,6 +69,7 @@ async function locateDoc(
     vaultId: row.vault_id,
     folderId: row.folder_id,
     organizationId: row.organization_id,
+    createdBy: row.created_by,
   };
 }
 
@@ -123,11 +127,16 @@ async function sharePermission(
   organizationId: string,
   isMember: boolean,
 ): Promise<Permission> {
-  // The org-wide ("Open"/"Read-only") grant applies ONLY to actual workspace
-  // members — never to outsiders who merely know a doc id. Per-user grants are
-  // inherently scoped to the user, so they need no membership gate.
+  // Team (org-wide) grants apply ONLY to actual workspace members — never to
+  // outsiders who merely know a doc id. They can target a specific folder/file
+  // ("Share with team", private-by-default) or the whole workspace (Open/
+  // Read-only). Per-user grants are inherently scoped, so they need no gate.
   const orgGrantClause = isMember
-    ? "OR (resource_type = 'workspace' AND resource_id = $4 AND principal_type = 'org')"
+    ? `OR (principal_type = 'org' AND principal_id = $4 AND (
+            ($2::text IS NOT NULL AND resource_type = 'file' AND resource_id = $2)
+            OR (resource_type = 'folder' AND resource_id = ANY($3::text[]))
+            OR (resource_type = 'workspace' AND resource_id = $4)
+          ))`
     : "";
   // $2 (the doc id) is always referenced with an explicit cast + null guard so
   // Postgres can infer its type even for a folder resource, where docId is null
@@ -196,6 +205,10 @@ export async function effectivePermission(
   const role = await memberRole(db, loc.organizationId, userId);
   let granted: Permission;
   if (role === "owner" || role === "admin") {
+    granted = "edit";
+  } else if (loc.createdBy && loc.createdBy === userId) {
+    // Private-by-default: a member always has edit on a note they created, even
+    // with no explicit share (that's what makes "my private notes" work).
     granted = "edit";
   } else {
     granted = await sharePermission(

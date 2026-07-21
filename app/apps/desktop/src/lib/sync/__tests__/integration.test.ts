@@ -64,15 +64,15 @@ describe.skipIf(!RUN)("client↔server integration", () => {
     const invite = pending.find((i) => i.email === `b-${stamp}@it.test`) ?? pending[0];
     expect(invite).toBeTruthy();
     await b.acceptInvitation(invite.id);
-    // Workspaces default to Open (org-wide edit), so B starts writable. A makes
-    // B read-only on this file the way the Access panel does: a user-scope lock
-    // (a deny overlay capping B at view).
+    // Private-by-default: a new vault grants members nothing, so B starts with
+    // NO access. A shares this file with B read-only the way the Access panel
+    // does — a user-scope `view` grant (not a lock, which alone grants nothing).
     await a.createShare({
       resourceType: "file",
       resourceId: docId,
       principalId: bUser.id,
       principalType: "user",
-      permission: "locked",
+      permission: "view",
     });
 
     // ---- sync-token gating ----
@@ -123,6 +123,47 @@ describe.skipIf(!RUN)("client↔server integration", () => {
     textB.insert(0, "HACK ");
     await new Promise((r) => setTimeout(r, 1000));
     expect(textA.toString()).toBe(before); // A never sees B's rejected write
+  }, 40_000);
+
+  it("DocSync reports pending on a local edit and flushes to synced", async () => {
+    const stamp = Date.now();
+    const wsPoly = WebSocket as unknown;
+
+    const a = new ApiClient({ baseUrl: SERVER });
+    await a.signUp({ email: `flush-${stamp}@it.test`, password: "password123", name: "Flush A" });
+    const org = await a.createOrganization({ name: `FL ${stamp}`, slug: `fl-${stamp}` });
+    await a.setActiveOrganization(org.id);
+    const vault = await a.createVault({ name: `FlVault ${stamp}`, organizationId: org.id });
+    const note = await a.createNote({ vaultId: vault.id, relPath: "n/flush.md", title: "F" });
+    const docId = note.docId ?? note.id;
+
+    let pending = false;
+    let flushes = 0;
+    const doc = new Y.Doc();
+    const sync = new DocSync({
+      api: a,
+      doc,
+      docId,
+      vaultId: vault.id,
+      webSocketPolyfill: wsPoly,
+      onPending: (p) => {
+        pending = p;
+      },
+      onFlushed: () => {
+        flushes += 1;
+      },
+    });
+    created.push(sync);
+    await sync.whenSynced();
+
+    const flushesBefore = flushes;
+    doc.getText("content").insert(0, "hello");
+    // The edit must immediately mark pending, then flush back to not-pending
+    // once the server acks — this is the "Saving… → Synced · just now" signal.
+    await waitFor(() => pending === true, 4000, "edit marks pending");
+    await waitFor(() => pending === false, 8000, "edit flushes");
+    expect(flushes).toBeGreaterThan(flushesBefore);
+    expect(sync.pending).toBe(false);
   }, 40_000);
 
   it("attachment blob: A uploads → invited member B lists + downloads byte-identical", async () => {

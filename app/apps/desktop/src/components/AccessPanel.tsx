@@ -13,12 +13,16 @@ import { useStore } from "../store";
 import { Avatar } from "./Identity";
 
 /**
- * Access — the unified locker. One structural view of the vault where every
- * folder/note has a mode (Open · Read-only · Private-coming-soon) plus a
- * resolved "who can access" list. Built on the existing shares model:
- *  - Read-only for everyone = an org-scope `locked` share on the resource.
- *  - Per-member Read-only    = a user-scope `locked` share.
- *  - Can view / Can edit     = a user-scope view/edit grant.
+ * Access — the unified locker. A workspace-default posture (Shared · Read-only ·
+ * Private) plus a per-folder/note override and a resolved "who can access" list.
+ * Built on the shares model:
+ *  - Workspace posture       = an org grant on the workspace (edit=Shared,
+ *    view=Read-only) or none (Private, the new default for new workspaces).
+ *  - "Shared" on an item      = an org edit grant on the folder/file.
+ *  - "Read-only" on an item   = an org view grant (Private workspace) or an
+ *    org `locked` share (Open workspace, where a lock caps the edit baseline).
+ *  - "Private" on an item     = no team row (only creator + explicit shares).
+ *  - Per-member view/edit     = a user-scope lock / edit grant.
  * Folder settings inherit to everything inside (server ACL + lock overlay).
  */
 
@@ -137,9 +141,36 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [shares, setShares] = useState<Share[]>([]);
   const [access, setAccess] = useState<ResolvedMemberAccess[] | null>(null);
+  const [wsShares, setWsShares] = useState<Share[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const orgId = session?.activeOrganizationId ?? null;
+
+  // Workspace posture: an org grant on the workspace is "Open" (edit) or
+  // "Read-only" (view); no grant is "Private" (members see only what they
+  // create or what's explicitly shared with them / the team).
+  const reloadWorkspace = async () => {
+    if (!canManage || !orgId) {
+      setWsShares([]);
+      return;
+    }
+    try {
+      setWsShares(await authManager.api.listWorkspaceShares(orgId));
+    } catch {
+      setWsShares([]);
+    }
+  };
+  useEffect(() => {
+    void reloadWorkspace();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, orgId]);
+
+  const wsGrant = wsShares.find(
+    (s) => sharePrincipalType(s) === "org" && (s.permission === "edit" || s.permission === "view"),
+  );
+  const wsPosture: Mode = wsGrant ? (wsGrant.permission === "edit" ? "open" : "readonly") : "private";
 
   // Flatten every synced folder + note into an indented list.
   const resources = useMemo<Resource[]>(() => {
@@ -212,10 +243,20 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
 
   const effLock = lockMap.get(selected?.path ?? "");
   const ownScope = selected ? directScopes.get(selected.path) ?? null : null;
-  // An org lock on THIS resource (direct) vs inherited from a parent folder.
+  // Direct org rows on THIS resource: a lock, a read-only (view) grant, or a
+  // shared (edit) grant. Plus a lock inherited from a parent folder.
   const ownOrgLock = shares.find((s) => sharePrincipalType(s) === "org" && s.permission === "locked");
+  const ownOrgView = shares.find((s) => sharePrincipalType(s) === "org" && s.permission === "view");
+  const ownOrgEdit = shares.find((s) => sharePrincipalType(s) === "org" && s.permission === "edit");
   const inheritedOrgLock = !!effLock?.org && !ownOrgLock;
-  const generalMode: Mode = ownOrgLock || inheritedOrgLock ? "readonly" : "open";
+  // Resolve the resource's team mode: a direct lock/view → read-only; a direct
+  // edit grant → shared/open; nothing direct → inherit the workspace posture.
+  const generalMode: Mode =
+    ownOrgLock || inheritedOrgLock || ownOrgView
+      ? "readonly"
+      : ownOrgEdit
+        ? "open"
+        : wsPosture;
   // When an Everyone/org lock (direct or inherited) already makes the resource
   // read-only for all, a per-member "read-only" lock is redundant and makes
   // Unlock misleading — so the per-person controls are suppressed in favour of
@@ -239,13 +280,13 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
   // --- writes ---------------------------------------------------------------
 
   const run = async (fn: () => Promise<void>) => {
-    if (!selected) return;
     setBusy(true);
     setError(null);
     try {
       await fn();
       await useStore.getState().refreshLocks();
-      await reload(selected);
+      await reloadWorkspace();
+      if (selected) await reload(selected);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -253,13 +294,61 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
     }
   };
 
+  /** Clear every DIRECT org row (grant or lock) on the selected resource. */
+  const clearResourceOrgRows = async () => {
+    if (!selected) return;
+    for (const s of shares) {
+      if (sharePrincipalType(s) !== "org") continue;
+      if (s.permission === "locked") await useStore.getState().removeLock(s.id);
+      else await authManager.api.revokeShare(s.id);
+    }
+  };
+
+  // Per-resource team mode. "Open" = share with the team (edit); "Read-only" =
+  // team can view; "Private" = no team access (only creator + explicit shares).
+  // Read-only is a lock when the workspace is Open (a lock caps the baseline
+  // edit at view); a plain org view grant when the workspace is Private (there
+  // is no baseline edit to cap, and a grant is what GIVES the team read).
   const setGeneral = (mode: Mode) => {
-    if (!selected || mode === "private" || mode === generalMode || inheritedOrgLock) return;
+    if (!selected || mode === generalMode || inheritedOrgLock) return;
     void run(async () => {
-      if (mode === "readonly") {
-        await useStore.getState().createLock(selected.kind, selected.id, null);
-      } else if (ownOrgLock) {
-        await useStore.getState().removeLock(ownOrgLock.id);
+      await clearResourceOrgRows();
+      if (mode === "open") {
+        await authManager.api.createShare({
+          resourceType: selected.kind,
+          resourceId: selected.id,
+          principalType: "org",
+          permission: "edit",
+        });
+      } else if (mode === "readonly") {
+        if (wsPosture === "private") {
+          await authManager.api.createShare({
+            resourceType: selected.kind,
+            resourceId: selected.id,
+            principalType: "org",
+            permission: "view",
+          });
+        } else {
+          await useStore.getState().createLock(selected.kind, selected.id, null);
+        }
+      }
+      // "private" = just the cleared state (no team row).
+    });
+  };
+
+  // Whole-workspace posture (Open / Read-only / Private) = the org grant on the
+  // workspace resource. Private removes it, falling back to per-item sharing.
+  const setWorkspacePosture = (mode: Mode) => {
+    if (!orgId || mode === wsPosture) return;
+    void run(async () => {
+      if (wsGrant) await authManager.api.revokeShare(wsGrant.id);
+      if (mode !== "private") {
+        await authManager.api.createShare({
+          resourceType: "workspace",
+          resourceId: orgId,
+          principalType: "org",
+          permission: mode === "open" ? "edit" : "view",
+        });
       }
     });
   };
@@ -315,10 +404,40 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
   return (
     <div className="access-panel">
       <p className="access-intro">
-        Every item is <strong>Open</strong> — teammates read &amp; write and Claude can read and edit.
-        Set anything to <strong>Read-only</strong> to freeze it for everyone (admins included).
-        Folder settings flow down to everything inside.
+        Choose what the team can reach. Set the whole workspace below, then override any folder or
+        note — <strong>Shared</strong> (read &amp; write), <strong>Read-only</strong>, or{" "}
+        <strong>Private</strong> (just you). Folder settings flow down to everything inside.
       </p>
+
+      {canManage && orgId && (
+        <div className="access-ws">
+          <div className="access-seclabel">This workspace, by default</div>
+          <div className="access-seg" aria-disabled={busy}>
+            {(["open", "readonly", "private"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`access-segbtn${wsPosture === m ? " active" : ""}`}
+                data-mode={m}
+                disabled={busy}
+                onClick={() => setWorkspacePosture(m)}
+              >
+                <span className="access-st-top">
+                  {m === "open" ? ICON.open : m === "readonly" ? ICON.lock : ICON.shield}
+                  {m === "open" ? "Shared" : MODE_LABEL[m]}
+                </span>
+                <span className="access-st-sub">
+                  {m === "open"
+                    ? "Everyone reads & writes everything."
+                    : m === "readonly"
+                      ? "Everyone can read everything, not edit."
+                      : "Members see only what they create or you share."}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div className="auth-error">{error}</div>}
 
@@ -357,9 +476,27 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
                             ))}
                           </span>
                         )}
-                        <span className={`access-badge ${readOnly ? "ro" : "open"}`}>
-                          {readOnly ? ICON.lock : ICON.open}
-                          {readOnly ? (everyone ? "Read-only" : "Restricted") : "Open"}
+                        <span
+                          className={`access-badge ${
+                            readOnly ? "ro" : wsPosture === "private" ? "priv" : "open"
+                          }`}
+                        >
+                          {readOnly
+                            ? ICON.lock
+                            : wsPosture === "private"
+                              ? ICON.shield
+                              : wsPosture === "readonly"
+                                ? ICON.lock
+                                : ICON.open}
+                          {readOnly
+                            ? everyone
+                              ? "Read-only"
+                              : "Restricted"
+                            : wsPosture === "private"
+                              ? "Private"
+                              : wsPosture === "readonly"
+                                ? "Read-only"
+                                : "Shared"}
                         </span>
                       </span>
                     </button>
@@ -421,26 +558,32 @@ export function AccessPanel({ canManage }: { canManage: boolean }) {
                   <button
                     key={m}
                     type="button"
-                    className={`access-segbtn${generalMode === m ? " active" : ""}${m === "private" ? " soon" : ""}`}
+                    className={`access-segbtn${generalMode === m ? " active" : ""}`}
                     data-mode={m}
-                    disabled={!canManage || inheritedOrgLock || m === "private" || busy}
+                    disabled={!canManage || inheritedOrgLock || busy}
                     onClick={() => setGeneral(m)}
                   >
                     <span className="access-st-top">
                       {m === "open" ? ICON.open : m === "readonly" ? ICON.lock : ICON.shield}
-                      {MODE_LABEL[m]}
-                      {m === "private" && <span className="access-soon-tag">Soon</span>}
+                      {m === "open" ? "Shared" : MODE_LABEL[m]}
                     </span>
                     <span className="access-st-sub">
                       {m === "open"
-                        ? "Read & write for the workspace."
+                        ? "The whole team can read & write."
                         : m === "readonly"
-                          ? "Frozen for everyone. Claude can read, not edit."
-                          : "Encrypted — even Claude can't read it."}
+                          ? "The team can read, not edit. Claude reads only."
+                          : "Only you and people you share it with."}
                     </span>
                   </button>
                 ))}
               </div>
+              {generalMode === "private" && wsPosture !== "private" && (
+                <div className="access-hint">
+                  This workspace is <strong>{MODE_LABEL[wsPosture]}</strong>, so everything is
+                  visible to the team by default. To make individual items private, set the whole
+                  workspace to <strong>Private</strong> above, then share the folders you want.
+                </div>
+              )}
 
               <div className="access-seclabel">
                 Who can access{loading ? " · resolving…" : ""}

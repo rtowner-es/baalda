@@ -141,6 +141,41 @@ describe("effective-permission resolver matrix (spec 04 §3)", () => {
     expect(await effectivePermission(outsider, doc)).toBe("none");
   });
 
+  // ── private-by-default (opt-in team sharing) ──────────────────────────────
+
+  it("private-by-default: creator gets edit on their own note; another member gets none", async () => {
+    const org = await seedOrg("Acme", "acme-creator");
+    const author = await seedUser("author@a.com");
+    const other = await seedUser("other@a.com");
+    await seedMember(org, author, "member");
+    await seedMember(org, other, "member");
+    const vault = await seedVault(org); // no workspace grant → private
+    const doc = await seedNote(vault, null, "mine.md", author);
+    expect(await effectivePermission(author, doc)).toBe("edit"); // creator
+    expect(await effectivePermission(other, doc)).toBe("none"); // not shared
+  });
+
+  it("Share with team: an org grant on a folder gives every member access", async () => {
+    const org = await seedOrg("Acme", "acme-team-folder");
+    const author = await seedUser("author@a.com");
+    const other = await seedUser("other@a.com");
+    await seedMember(org, author, "member");
+    await seedMember(org, other, "member");
+    const vault = await seedVault(org);
+    const folder = await seedFolder(vault, null, "Team", "Team");
+    const doc = await seedNote(vault, folder, "Team/shared.md", author);
+    // "Share with team" = an org-principal edit grant on the folder.
+    await pool.query(
+      `INSERT INTO shares (id, workspace_id, resource_type, resource_id, principal_type, principal_id, permission)
+       VALUES (gen_random_uuid()::text, $1, 'folder', $2, 'org', $1, 'edit')`,
+      [org, folder],
+    );
+    expect(await effectivePermission(other, doc)).toBe("edit"); // now visible to team
+    // …but still not to a non-member who merely knows the id.
+    const outsider = await seedUser("out@a.com");
+    expect(await effectivePermission(outsider, doc)).toBe("none");
+  });
+
   it("a lock still caps an Open-workspace member at view", async () => {
     const org = await seedOrg("Acme", "acme-open-locked");
     const member = await seedUser("m@a.com");

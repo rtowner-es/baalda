@@ -176,7 +176,15 @@ function SyncIndicator() {
   const status = useStore((s) => s.syncStatus);
   const syncEnabled = useStore((s) => s.syncEnabled);
   const lastSyncedAt = useStore((s) => s.lastSyncedAt);
-  return <SyncBadge status={status} enabled={syncEnabled} lastSyncedAt={lastSyncedAt} />;
+  const pending = useStore((s) => s.syncPending);
+  return (
+    <SyncBadge
+      status={status}
+      enabled={syncEnabled}
+      lastSyncedAt={lastSyncedAt}
+      pending={pending}
+    />
+  );
 }
 
 export default function App() {

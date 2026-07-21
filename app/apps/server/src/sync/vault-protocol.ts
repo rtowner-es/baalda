@@ -31,6 +31,7 @@ export type ServerControl =
   | { t: "ready" } // initial backfill drained
   | { t: "drop"; docId: string } // access lost / doc removed -> client evicts
   | { t: "reauth" } // ACL changed in this vault -> client re-mints its open doc's token
+  | { t: "registry" } // folders/notes structure changed -> client re-pulls the registry
   | { t: "err"; message: string };
 
 export function parseHello(text: string): HelloFrame | null {
@@ -75,6 +76,7 @@ export function decodeWsUpdate(
 
 export const PS_UPDATE = 0x01;
 export const PS_ACL_CHANGED = 0x02;
+export const PS_REGISTRY_CHANGED = 0x03;
 
 export function encodePubsubUpdate(docId: string, update: Uint8Array): Uint8Array {
   const body = frameDocPayload(docId, update);
@@ -88,9 +90,14 @@ export function encodePubsubAclChanged(): Uint8Array {
   return new Uint8Array([PS_ACL_CHANGED]);
 }
 
+export function encodePubsubRegistryChanged(): Uint8Array {
+  return new Uint8Array([PS_REGISTRY_CHANGED]);
+}
+
 export type PubsubMessage =
   | { type: "update"; docId: string; update: Uint8Array }
-  | { type: "acl-changed" };
+  | { type: "acl-changed" }
+  | { type: "registry-changed" };
 
 export function decodePubsub(bytes: Uint8Array): PubsubMessage | null {
   if (bytes.length < 1) return null;
@@ -101,6 +108,8 @@ export function decodePubsub(bytes: Uint8Array): PubsubMessage | null {
     }
     case PS_ACL_CHANGED:
       return { type: "acl-changed" };
+    case PS_REGISTRY_CHANGED:
+      return { type: "registry-changed" };
     default:
       return null;
   }

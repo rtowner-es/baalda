@@ -34,6 +34,8 @@ async function main() {
     disconnectDoc: (vaultId, docId) => disconnectDoc(sync, vaultId, docId),
     // Share create/revoke → subscribers re-evaluate their readable-doc set.
     onAclChanged: (vaultId) => void vaultChannel.publishAclChanged(vaultId),
+    // Folder/note create/rename/move/delete → subscribers re-pull the registry.
+    onRegistryChanged: (vaultId) => void vaultChannel.publishRegistryChanged(vaultId),
     // MCP tools write notes through the same sync server, so AI edits persist,
     // re-index, and broadcast to open editors exactly like a human edit.
     docWriter: createDocWriter(sync),
