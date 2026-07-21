@@ -28,6 +28,15 @@ const argonOpts = { algorithm: Algorithm.Argon2id } as const;
 
 export const authPool = new pg.Pool({ connectionString: config.databaseUrl });
 
+// Same footgun as db/pool.ts: Better Auth's Kysely adapter runs every
+// sign-up/sign-in query through this pool, and an unhandled 'error' event
+// from an idle client crashes the whole process — the failure mode is
+// "server works right after boot, then every route (even /health) starts
+// 502ing a few seconds later, with no recovery." Log instead of crashing.
+authPool.on("error", (err) => {
+  console.error("[auth] idle client error on authPool", err);
+});
+
 // Google social sign-in is opt-in: only wired when both creds are present, so a
 // self-hosted server without them just omits the provider (the desktop hides
 // the button and email+password keeps working).
