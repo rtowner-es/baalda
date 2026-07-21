@@ -41,7 +41,7 @@ async function main() {
     docWriter: createDocWriter(sync),
   });
 
-  const httpServer = serve({ fetch: app.fetch, port: config.port }, (info) => {
+  const httpServer = serve({ fetch: app.fetch, port: config.port, hostname: "0.0.0.0" }, (info) => {
     console.log(`HTTP API listening on http://localhost:${info.port}`);
     console.log(`Hocuspocus sync listening on ws://localhost:${config.hocuspocusPort}`);
     console.log(`Hocuspocus sync also reachable at ws://localhost:${info.port}/sync`);
