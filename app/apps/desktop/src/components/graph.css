@@ -153,12 +153,12 @@
 }
 
 .graph-state-card {
-  max-width: 360px;
+  max-width: 460px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-7) var(--sp-8);
+  gap: var(--sp-3);
+  padding: var(--sp-10) var(--sp-10) var(--sp-8);
   text-align: center;
   /* The backdrop is a dark void in every theme, so these states use fixed
      light-on-dark colors instead of theme text vars (which would be dark, and
@@ -176,24 +176,26 @@
 
 .graph-state-card strong {
   display: block;
+  margin-bottom: var(--sp-1);
   color: #f4f6fb;
   font-family: var(--font-display);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-2xl);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 .graph-state-card span {
-  max-width: 30ch;
+  max-width: 34ch;
+  line-height: 1.6;
 }
 
 .graph-state-card code {
   font-family: var(--font-mono);
-  font-size: 0.9em;
+  font-size: 0.85em;
   color: #bcb2ff;
   background: rgba(127, 115, 255, 0.18);
   border: 1px solid rgba(127, 115, 255, 0.32);
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
@@ -201,10 +203,10 @@
 /* Empty state: a small constellation glyph anchors the copy — nodes + links,
    a preview of what the graph becomes. */
 .graph-empty {
-  gap: var(--sp-3);
+  gap: var(--sp-4);
 }
 .graph-empty-glyph {
-  margin-bottom: var(--sp-1);
+  margin-bottom: var(--sp-3);
   color: #8f84ff;
 }
 .graph-empty-glyph .ge-node {
