@@ -31,7 +31,7 @@ export interface BillingDeps {
 
 const PLANS = [
   { id: "pro-monthly", label: "Pro", amount: 1000, currency: "usd", interval: "month" },
-  { id: "pro-yearly", label: "Pro", amount: 9600, currency: "usd", interval: "year" },
+  { id: "pro-yearly", label: "Pro", amount: 9700, currency: "usd", interval: "year" },
 ] as const;
 
 export function createBillingRoutes(deps: BillingDeps): Hono {

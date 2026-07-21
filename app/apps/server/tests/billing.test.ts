@@ -129,7 +129,7 @@ describe("billing", () => {
       expect(body.enabled).toBe(true);
       expect(body.plans.map((p) => p.id)).toEqual(["pro-monthly", "pro-yearly"]);
       expect(body.plans.find((p) => p.id === "pro-monthly")!.amount).toBe(1000);
-      expect(body.plans.find((p) => p.id === "pro-yearly")!.amount).toBe(9600);
+      expect(body.plans.find((p) => p.id === "pro-yearly")!.amount).toBe(9700);
       expect(body.freeLimits).toEqual({ workspacesPerUser: 3, membersPerWorkspace: 3 });
     });
 
