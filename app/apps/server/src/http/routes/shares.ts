@@ -95,12 +95,9 @@ export function createShareRoutes(deps: ShareDeps): Hono {
         400,
       );
     }
-    // On a folder/file, org-wide rows only make sense as locks; plain grants
-    // stay per-user. A workspace resource is the exception: an org-wide
-    // edit/view grant IS the "Open"/"Read-only" workspace posture.
-    if (principalType === "org" && permission !== "locked" && resourceType !== "workspace") {
-      return c.json({ error: "org-wide shares must be locks (permission=locked)" }, 400);
-    }
+    // An org-wide edit/view grant on a folder/file is "Share with team" (spec:
+    // private-by-default). On a workspace resource it's the "Open"/"Read-only"
+    // posture. Both are allowed; locks (deny overlays) may also be org-wide.
 
     const gate = await canManage(session.userId, resourceType, resourceId);
     if (!gate.ok) return c.json({ error: gate.error }, (gate.status ?? 403) as 403 | 404);

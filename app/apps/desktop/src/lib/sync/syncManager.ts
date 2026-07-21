@@ -30,6 +30,25 @@ export interface DocSyncOptions {
   /** Base ws:// URL. Defaults to `deriveWsUrl(api base)` (see its doc). */
   wsUrl?: string;
   onStatus?: (status: SyncStatus) => void;
+  /**
+   * Fired when the set of *unsynced* local changes opens/closes: `true` the
+   * moment a local edit is made (not yet acked by the server), `false` once
+   * everything has flushed. Drives the "Saving…" badge state.
+   */
+  onPending?: (pending: boolean) => void;
+  /**
+   * Fired each time all local changes have been acknowledged by the server
+   * (unsynced count hit 0). This — not the one-time initial "synced" — is the
+   * real "last synced just now" signal during an active editing session.
+   */
+  onFlushed?: () => void;
+  /**
+   * How long (ms) the "Saving…" state lingers after the last change flushes
+   * before easing to "Synced". Smooths the badge so a burst of keystrokes (whose
+   * unsynced count bounces 0↔1 between acks) reads as one continuous "Saving…"
+   * instead of flickering. Default 700ms.
+   */
+  settleDelayMs?: number;
   /** Injected in tests (Node lacks a global WebSocket the provider likes). */
   webSocketPolyfill?: unknown;
 }
@@ -98,10 +117,15 @@ export class DocSync {
   private readonly api: ApiClient;
   private readonly docId: string;
   private readonly onStatus?: (status: SyncStatus) => void;
+  private readonly onPending?: (pending: boolean) => void;
+  private readonly onFlushed?: () => void;
+  private readonly settleDelayMs: number;
   private readonly refresher: TokenRefreshScheduler;
 
   private _status: SyncStatus = "connecting";
   private _readOnly = false;
+  private _pending = false;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
   private reconnectPending = false;
 
@@ -109,6 +133,9 @@ export class DocSync {
     this.api = opts.api;
     this.docId = opts.docId;
     this.onStatus = opts.onStatus;
+    this.onPending = opts.onPending;
+    this.onFlushed = opts.onFlushed;
+    this.settleDelayMs = opts.settleDelayMs ?? 700;
 
     const wsUrl = opts.wsUrl ?? deriveWsUrl(this.api.getBaseUrl());
     const name = `vault:${opts.vaultId}/note:${opts.docId}`;
@@ -161,6 +188,35 @@ export class DocSync {
         if (!this.destroyed && this._status !== "no-access") {
           this.setStatus(this._readOnly ? "read-only" : "synced");
         }
+      },
+      // Fires on every local edit (count→>0) and every server ack (count→…→0).
+      // The provider only decrements toward 0 as the server acknowledges each
+      // update, so `number === 0` means the latest edit is durably on the
+      // server — the true "synced just now" moment (spec 03 §4). While offline
+      // the count stays >0 (no acks), so we correctly show "Saving…"/pending.
+      onUnsyncedChanges: ({ number }: { number: number }) => {
+        if (this.destroyed) return;
+        if (number > 0) {
+          // An edit is outstanding — show "Saving…" at once and cancel any
+          // in-flight settle so a typing burst stays continuous.
+          if (this.settleTimer) {
+            clearTimeout(this.settleTimer);
+            this.settleTimer = null;
+          }
+          this.setPending(true);
+          return;
+        }
+        // Everything acked. Debounce the ease to "Synced" so the rapid 0↔1
+        // bounce between keystrokes doesn't flicker the badge.
+        if (this.settleTimer) clearTimeout(this.settleTimer);
+        this.settleTimer = setTimeout(() => {
+          this.settleTimer = null;
+          if (this.destroyed || this._status === "no-access") return;
+          const wasPending = this._pending;
+          this.setPending(false);
+          // Only stamp "synced just now" on the real pending→settled edge.
+          if (wasPending) this.onFlushed?.();
+        }, this.settleDelayMs);
       },
     });
 
@@ -261,15 +317,29 @@ export class DocSync {
     }
   }
 
+  get pending(): boolean {
+    return this._pending;
+  }
+
   private setStatus(s: SyncStatus): void {
     if (this._status === s) return;
     this._status = s;
     this.onStatus?.(s);
   }
 
+  private setPending(p: boolean): void {
+    if (this._pending === p) return;
+    this._pending = p;
+    this.onPending?.(p);
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
     this.refresher.cancel();
     try {
       this.provider.destroy();

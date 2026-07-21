@@ -179,10 +179,34 @@ export class VaultRegistry {
       seeded = true;
     }
 
+    await this.syncStructure(vaultId, workingTree);
+    return { seeded };
+  }
+
+  /**
+   * Re-pull the server's folder/note set and reconcile it against the current
+   * local tree WITHOUT re-resolving the vault or seeding. Called when the vault
+   * channel signals a `registry` change (a teammate created/renamed/moved/
+   * deleted something) so this device's tree catches up live. Idempotent.
+   */
+  async pull(): Promise<void> {
+    if (!this.serverVaultId) return;
+    const tree = await ipc.listTree();
+    await this.syncStructure(this.serverVaultId, tree);
+  }
+
+  /**
+   * The shared core of reconcile/pull: make the server + this device agree on the
+   * folder/note set. Adopts existing rows by path, creates missing ones (reusing
+   * local doc_ids), materializes server-only notes onto disk, and persists the
+   * {relPath → docId} + {folderPath → id} maps to `.context/config.json`.
+   */
+  private async syncStructure(vaultId: string, workingTree: TreeNode): Promise<void> {
+    const serverFolders = await this.api.listFolders(vaultId);
+    const serverNotes = await this.api.listNotes(vaultId);
     const { folders, notes } = flattenTree(workingTree);
 
     // 2. Folders: adopt by path, create missing (parents first).
-    const serverFolders = await this.api.listFolders(vaultId);
     const folderIdByPath = new Map<string, string>();
     for (const f of serverFolders) folderIdByPath.set(f.path, f.id);
 
@@ -204,9 +228,8 @@ export class VaultRegistry {
     }
     this.folderByPath = folderIdByPath;
 
-    // 3. Notes: adopt by relPath, create missing. (`serverNotes` was listed
-    //    above, before any seeding — still accurate, since seeding only writes
-    //    to disk; the seeded files are created on the server by this loop.)
+    // 3. Notes: adopt by relPath, create missing. Any first-run seeding happened
+    //    in reconcile before this runs; the seeded files register here as docs.
     const docIdByPath = new Map<string, string>();
     for (const n of serverNotes) {
       const rp = noteRelPath(n);
@@ -271,8 +294,6 @@ export class VaultRegistry {
         console.warn("[registry] materialize failed", rp, e);
       }
     }
-
-    return { seeded };
   }
 
   /**
@@ -311,4 +332,143 @@ export class VaultRegistry {
       return null;
     }
   }
+
+  /**
+   * Register a newly-created folder on the server so teammates see it live and
+   * it can be shared. Idempotent (the server adopts an existing path). No-op if
+   * the vault isn't reconciled yet.
+   */
+  async registerFolder(relPath: string, name: string): Promise<string | null> {
+    if (!this.serverVaultId) return null;
+    const existing = this.folderByPath.get(relPath);
+    if (existing) return existing;
+    try {
+      const parentId = this.folderByPath.get(parentDir(relPath)) ?? null;
+      const created = await this.api.createFolder({
+        vaultId: this.serverVaultId,
+        name,
+        path: relPath,
+        parentId,
+      });
+      this.folderByPath.set(relPath, created.id);
+      await this.persist();
+      return created.id;
+    } catch (e) {
+      console.error("[registry] registerFolder failed", relPath, e);
+      return null;
+    }
+  }
+
+  /**
+   * Propagate a local rename/move to the server. Handles both a folder (with its
+   * whole subtree of paths) and a single note. doc_ids never change — only the
+   * path columns move — so open docs and backlinks survive (spec invariant).
+   */
+  async renamePath(oldPath: string, newPath: string): Promise<void> {
+    if (!this.serverVaultId) return;
+    const folderId = this.folderByPath.get(oldPath);
+    if (folderId) {
+      // Folder move: rewrite the server subtree, then the local prefix maps.
+      const parentId = this.folderByPath.get(parentDir(newPath)) ?? null;
+      try {
+        await this.api.updateFolder(folderId, { name: baseName(newPath), path: newPath, parentId });
+      } catch (e) {
+        console.error("[registry] updateFolder failed", oldPath, e);
+        return;
+      }
+      this.folderByPath = remapPrefix(this.folderByPath, oldPath, newPath);
+      this.byPath = remapPrefix(this.byPath, oldPath, newPath);
+      this.rebuildByDocId();
+      await this.persist();
+      return;
+    }
+    const mapping = this.byPath.get(oldPath);
+    if (mapping) {
+      const newFolderId = this.folderByPath.get(parentDir(newPath)) ?? null;
+      try {
+        await this.api.updateNote(mapping.docId, { relPath: newPath, folderId: newFolderId });
+      } catch (e) {
+        console.error("[registry] updateNote failed", oldPath, e);
+        return;
+      }
+      this.byPath.delete(oldPath);
+      this.byPath.set(newPath, mapping);
+      this.byDocId.set(mapping.docId, newPath);
+      await this.persist();
+    }
+  }
+
+  /** Propagate a local delete of a folder subtree or a note to the server. */
+  async deletePath(path: string): Promise<void> {
+    if (!this.serverVaultId) return;
+    const folderId = this.folderByPath.get(path);
+    if (folderId) {
+      try {
+        await this.api.deleteFolder(folderId);
+      } catch (e) {
+        console.error("[registry] deleteFolder failed", path, e);
+        return;
+      }
+      this.folderByPath = dropPrefix(this.folderByPath, path);
+      this.byPath = dropPrefix(this.byPath, path);
+      this.rebuildByDocId();
+      await this.persist();
+      return;
+    }
+    const mapping = this.byPath.get(path);
+    if (mapping) {
+      try {
+        await this.api.deleteNote(mapping.docId);
+      } catch (e) {
+        console.error("[registry] deleteNote failed", path, e);
+        return;
+      }
+      this.byPath.delete(path);
+      this.byDocId.delete(mapping.docId);
+      await this.persist();
+    }
+  }
+
+  /** Rebuild byDocId from byPath after a bulk prefix remap/drop. */
+  private rebuildByDocId(): void {
+    this.byDocId.clear();
+    for (const [rp, m] of this.byPath) this.byDocId.set(m.docId, rp);
+  }
+
+  /** Write the current in-memory maps back to `.context/config.json`. */
+  private async persist(): Promise<void> {
+    if (!this.serverVaultId) return;
+    const docs: Record<string, string> = {};
+    for (const [rp, m] of this.byPath) docs[rp] = m.docId;
+    const folders: Record<string, string> = {};
+    for (const [rp, id] of this.folderByPath) folders[rp] = id;
+    await this.saveConfig({ serverVaultId: this.serverVaultId, docs, folders });
+  }
+}
+
+/** basename of a vault-relative path. */
+function baseName(path: string): string {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? path : path.slice(i + 1);
+}
+
+/** Rewrite every key at `oldPrefix` (exact or `oldPrefix/…`) to `newPrefix`. */
+function remapPrefix<V>(map: Map<string, V>, oldPrefix: string, newPrefix: string): Map<string, V> {
+  const out = new Map<string, V>();
+  for (const [k, v] of map) {
+    if (k === oldPrefix) out.set(newPrefix, v);
+    else if (k.startsWith(oldPrefix + "/")) out.set(newPrefix + k.slice(oldPrefix.length), v);
+    else out.set(k, v);
+  }
+  return out;
+}
+
+/** Drop every key at `prefix` (exact or `prefix/…`). */
+function dropPrefix<V>(map: Map<string, V>, prefix: string): Map<string, V> {
+  const out = new Map<string, V>();
+  for (const [k, v] of map) {
+    if (k === prefix || k.startsWith(prefix + "/")) continue;
+    out.set(k, v);
+  }
+  return out;
 }

@@ -113,22 +113,26 @@ export function VaultPicker() {
     }
   }
 
-  // "New vault" step 1: choose the parent location, then ask for a name. If the
-  // chosen folder is ALREADY a vault, don't nest a new empty vault inside it —
-  // offer to open the existing one instead.
+  // "New vault": pick a folder — and that folder *is* the vault. We initialize
+  // it in place (named after the folder), so there's no separate naming step:
+  // choosing the folder is the choice. If the chosen folder is ALREADY a vault,
+  // don't nest a new one inside it — offer to open the existing one instead.
   async function startNewVault() {
     setError(null);
     try {
-      const parent = await ipc.pickFolder();
-      if (!parent) return;
-      if (await ipc.isVault(parent)) {
-        setAlreadyVault(parent);
+      const picked = await ipc.pickFolder();
+      if (!picked) return;
+      if (await ipc.isVault(picked)) {
+        setAlreadyVault(picked);
         return;
       }
-      setNewParent(parent);
-      setNewName("Untitled Vault");
+      setBusy(true);
+      const info = await ipc.openVault(picked);
+      await openVault(info);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -282,7 +286,10 @@ export function VaultPicker() {
                 </div>
               </motion.div>
             ) : naming ? (
-              // ---- New-vault naming step ----
+              // ---- Naming step: only reached via "Create inside" an existing
+              //      vault, where a nested vault does need its own folder name.
+              //      The normal "New vault" flow skips this — the picked folder
+              //      is the vault. ----
               <motion.form
                 key="naming"
                 className="new-vault-form"

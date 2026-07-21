@@ -648,6 +648,24 @@ export class ApiClient {
     return data;
   }
 
+  /** Rename/move a folder (rewrites descendant paths server-side; id stays). */
+  async updateFolder(
+    id: string,
+    input: { name?: string; path?: string; parentId?: string | null },
+  ): Promise<RegisteredFolder> {
+    const { data } = await this.request<RegisteredFolder>(
+      "PATCH",
+      `/api/folders/${encodeURIComponent(id)}`,
+      { body: input },
+    );
+    return data;
+  }
+
+  /** Delete a folder subtree (soft-deletes its notes). */
+  async deleteFolder(id: string): Promise<void> {
+    await this.request<unknown>("DELETE", `/api/folders/${encodeURIComponent(id)}`);
+  }
+
   async listNotes(vaultId: string): Promise<RegisteredNote[]> {
     const { data } = await this.request<{ notes: RegisteredNote[] }>("GET", "/api/notes", {
       query: { vaultId },
@@ -666,19 +684,46 @@ export class ApiClient {
     return data;
   }
 
+  /** Rename/move a note (rel_path/folder/title); doc_id is unchanged. */
+  async updateNote(
+    id: string,
+    input: { relPath?: string; title?: string | null; folderId?: string | null },
+  ): Promise<RegisteredNote> {
+    const { data } = await this.request<RegisteredNote>(
+      "PATCH",
+      `/api/notes/${encodeURIComponent(id)}`,
+      { body: input },
+    );
+    return data;
+  }
+
+  /** Soft-delete a note (keeps its doc_id row; drops it from the registry list). */
+  async deleteNote(id: string): Promise<void> {
+    await this.request<unknown>("DELETE", `/api/notes/${encodeURIComponent(id)}`);
+  }
+
   // ---- Shares -------------------------------------------------------------
 
-  async listShares(resourceType: "folder" | "file", resourceId: string): Promise<Share[]> {
+  async listShares(
+    resourceType: "folder" | "file" | "workspace",
+    resourceId: string,
+  ): Promise<Share[]> {
     const { data } = await this.request<{ shares: Share[] }>("GET", "/api/shares", {
       query: { resourceType, resourceId },
     });
     return data.shares ?? [];
   }
 
+  /** Workspace-level shares (the Open/Read-only posture: an org grant on the
+   *  workspace). resourceId is the organization id. */
+  async listWorkspaceShares(orgId: string): Promise<Share[]> {
+    return this.listShares("workspace", orgId);
+  }
+
   async createShare(input: {
-    resourceType: "folder" | "file";
+    resourceType: "folder" | "file" | "workspace";
     resourceId: string;
-    /** Required for user shares; ignored for org-wide locks. */
+    /** Required for user shares; ignored for org-wide grants/locks. */
     principalId?: string;
     principalType?: "user" | "org";
     permission: Permission | "locked";

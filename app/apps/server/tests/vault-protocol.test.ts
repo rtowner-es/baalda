@@ -5,6 +5,7 @@ import {
   decodeWsUpdate,
   encodePubsubUpdate,
   encodePubsubAclChanged,
+  encodePubsubRegistryChanged,
   decodePubsub,
 } from "../src/sync/vault-protocol.js";
 
@@ -27,6 +28,10 @@ describe("vault channel framing", () => {
 
   it("decodes the acl-changed control payload", () => {
     expect(decodePubsub(encodePubsubAclChanged())).toEqual({ type: "acl-changed" });
+  });
+
+  it("decodes the registry-changed control payload", () => {
+    expect(decodePubsub(encodePubsubRegistryChanged())).toEqual({ type: "registry-changed" });
   });
 
   it("returns null for a truncated frame and an unknown pubsub type", () => {

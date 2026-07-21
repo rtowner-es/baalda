@@ -2319,6 +2319,17 @@ button.primary.hero:hover:not(:disabled) {
   background: var(--warning-soft);
   color: var(--warning);
 }
+.access-badge.priv {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+/* workspace-default posture block, above the per-item list */
+.access-ws {
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
 
 /* affected-people avatar stack */
 .access-avstack {
@@ -2958,6 +2969,10 @@ button.primary.hero:hover:not(:disabled) {
   padding: 3px var(--sp-3);
   background: var(--bg-hover);
   color: var(--text-secondary);
+  /* Ease the Saving…↔Synced tint change so the state shift feels smooth. */
+  transition:
+    background-color 260ms var(--ease, ease),
+    color 260ms var(--ease, ease);
 }
 .sync-dot {
   width: 6px;

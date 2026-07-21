@@ -11,6 +11,7 @@ import {
   encodeWsUpdate,
   encodePubsubUpdate,
   encodePubsubAclChanged,
+  encodePubsubRegistryChanged,
   decodePubsub,
   type ServerControl,
 } from "./vault-protocol.js";
@@ -59,6 +60,12 @@ export class VaultChannel {
   /** Signal that shares changed in a vault; subscribers re-evaluate their ACL set. */
   async publishAclChanged(vaultId: string): Promise<void> {
     await this.pubsub.publish(vaultTopic(vaultId), encodePubsubAclChanged());
+  }
+
+  /** Signal that the folder/note structure changed in a vault (create/rename/
+   *  move/delete); subscribers re-pull the registry to update their local tree. */
+  async publishRegistryChanged(vaultId: string): Promise<void> {
+    await this.pubsub.publish(vaultTopic(vaultId), encodePubsubRegistryChanged());
   }
 
   /** Wire the channel onto the HTTP server's upgrade at `config.vaultSyncPath`. */
@@ -187,6 +194,14 @@ class VaultConnection {
       if (this.readable.has(msg.docId)) {
         this.sendBinary(encodeWsUpdate(msg.docId, msg.update));
       }
+      return;
+    }
+    if (msg.type === "registry-changed") {
+      // The set of folders/notes changed. The ACL set may also have shifted (a
+      // new note the user can read, or one revoked), so re-evaluate that too —
+      // this drops/back-fills docs — and tell the client to re-pull the tree.
+      void this.refreshAcl();
+      this.send({ t: "registry" });
       return;
     }
     // acl-changed: re-evaluate; drop revoked docs, backfill newly-granted ones.

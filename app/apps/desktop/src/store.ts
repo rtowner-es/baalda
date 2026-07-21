@@ -72,8 +72,12 @@ interface AppStore {
   userInvitations: Invitation[];
   syncEnabled: boolean;
   syncStatus: SyncStatus;
-  /** When the current doc last reached "synced" — drives "last synced Xm ago". */
+  /** When the current doc last flushed all changes to the server — drives
+   *  "Synced · just now". Bumped on every server ack, not just initial sync. */
   lastSyncedAt: number | null;
+  /** True while the open note has local edits not yet acked by the server
+   *  (drives the "Saving…" badge state). */
+  syncPending: boolean;
   /** Locks (read-only overlays) in the synced vault — drives tree badges. */
   locks: Share[];
   /** Per-item accent colors (vault-local preference), path → color id. */
@@ -165,6 +169,8 @@ interface AppStore {
 
   // Sync
   setSyncStatus: (status: SyncStatus) => void;
+  setSyncPending: (pending: boolean) => void;
+  markSynced: () => void;
   enableSyncForVault: () => Promise<void>;
 }
 
@@ -253,6 +259,7 @@ export const useStore = create<AppStore>((set, get) => ({
   syncEnabled: false,
   syncStatus: "offline",
   lastSyncedAt: null,
+  syncPending: false,
   locks: [],
   itemColors: {},
   itemOrder: {},
@@ -362,6 +369,16 @@ export const useStore = create<AppStore>((set, get) => ({
 
   initAuth: async () => {
     syncManager.setStatusListener((status) => get().setSyncStatus(status));
+    syncManager.setActivityListeners({
+      onPending: (pending) => get().setSyncPending(pending),
+      onFlushed: () => get().markSynced(),
+    });
+    // A teammate's folder/note change has been pulled into the registry — reflect
+    // it in the sidebar tree + title index live.
+    syncManager.setRegistryListener(() => {
+      void get().refreshTree();
+      void get().refreshTitles();
+    });
     try {
       const session = await authManager.init();
       set({ serverUrl: authManager.getServerUrl() });
@@ -453,6 +470,7 @@ export const useStore = create<AppStore>((set, get) => ({
       userInvitations: [],
       syncEnabled: false,
       syncStatus: "offline",
+      syncPending: false,
       locks: [],
       pendingWorkspaceFolder: null,
       billingConfig: null,
@@ -646,6 +664,7 @@ export const useStore = create<AppStore>((set, get) => ({
           locks: [],
           syncEnabled: false,
           syncStatus: "offline",
+          syncPending: false,
           pendingWorkspaceFolder: null,
         });
       }
@@ -766,8 +785,15 @@ export const useStore = create<AppStore>((set, get) => ({
     set(
       status === "synced"
         ? { syncStatus: status, lastSyncedAt: Date.now() }
-        : { syncStatus: status },
+        : // Leaving "synced" (new doc connecting, offline, error…) clears any
+          // stale "Saving…" — pending only makes sense while connected.
+          { syncStatus: status, syncPending: false },
     ),
+
+  setSyncPending: (pending) => set({ syncPending: pending }),
+
+  // A server ack of all pending changes: this is the real "synced just now".
+  markSynced: () => set({ lastSyncedAt: Date.now(), syncPending: false }),
 
   enableSyncForVault: async () => {
     const { session, vault } = get();

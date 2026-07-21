@@ -5,7 +5,7 @@ import { config } from "../config.js";
 import { auth } from "../auth/auth.js";
 import { oauthConnectRoutes } from "./routes/oauth-connect.js";
 import { blobRoutes } from "./routes/blobs.js";
-import { registryRoutes } from "./routes/registry.js";
+import { createRegistryRoutes } from "./routes/registry.js";
 import { syncTokenRoutes } from "./routes/sync-token.js";
 import { vaultTokenRoutes } from "./routes/vault-token.js";
 import { desktopOauthRoutes } from "./routes/desktop-oauth.js";
@@ -23,6 +23,8 @@ export interface AppDeps extends ShareDeps {
   docWriter: DocWriter;
   /** Payment provider. Defaults to Polar; tests inject a fake. */
   billingProvider?: BillingProvider;
+  /** Structure changed (folder/note create/rename/move/delete) → broadcast. */
+  onRegistryChanged?: (vaultId: string) => void;
 }
 
 /**
@@ -105,7 +107,7 @@ export function createApp(deps: AppDeps): Hono {
   app.route("/api", desktopOauthRoutes);
   app.route("/api", syncTokenRoutes);
   app.route("/api", vaultTokenRoutes);
-  app.route("/api", registryRoutes);
+  app.route("/api", createRegistryRoutes({ onRegistryChanged: deps.onRegistryChanged }));
   app.route("/api", blobRoutes);
   app.route("/api", createShareRoutes(deps));
   const billingProvider = deps.billingProvider ?? new PolarBillingProvider();

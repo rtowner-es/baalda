@@ -7,6 +7,7 @@ vi.mock("../../ipc", () => ({ writeNote: vi.fn(async () => {}) }));
 import * as ipc from "../../ipc";
 import type { TreeNode } from "../../ipc";
 import {
+  STARTER_NOTES,
   WELCOME_NOTE_PATH,
   seedWelcomeContent,
   vaultIsEmpty,
@@ -36,17 +37,34 @@ describe("vaultIsEmpty", () => {
 describe("seedWelcomeContent", () => {
   beforeEach(() => writeNote.mockClear());
 
-  it("writes a root welcome note plus a Getting Started walkthrough", async () => {
+  it("writes the full interlinked starter set, welcome note first", async () => {
     const path = await seedWelcomeContent();
     expect(path).toBe(WELCOME_NOTE_PATH);
 
     const written = writeNote.mock.calls.map((c) => c[0]);
-    expect(written).toEqual([
-      "Welcome.md",
-      "Getting Started/How Baalda works.md",
-    ]);
+    // Every note in the starter set is written, in declared order.
+    expect(written).toEqual(STARTER_NOTES.map((n) => n.path));
+    expect(written[0]).toBe(WELCOME_NOTE_PATH);
+    expect(written.length).toBe(18);
     // Welcome note leads with its own H1 (write_note is full-file, no auto title).
     expect(writeNote.mock.calls[0][1]).toMatch(/^# Welcome to Baalda/);
+  });
+
+  it("every wikilink target resolves to another starter note (no dangling links)", () => {
+    // Basenames the starter set defines (how links resolve — see resolve_all_links).
+    const basenames = new Set(
+      STARTER_NOTES.map((n) => n.path.replace(/^.*\//, "").replace(/\.md$/, "")),
+    );
+    for (const note of STARTER_NOTES) {
+      // `[[Target]]` / `[[Target|alias]]` — mirror the Rust WIKILINK_RE
+      // (`[^\]\n]+`, so a bare `[[` syntax hint on its own line never matches).
+      for (const m of note.body.matchAll(/\[\[([^\]\n]+)\]\]/g)) {
+        const target = m[1].split("|")[0].split("#")[0].trim();
+        // Skip the literal syntax examples like `[[wikilink]]` shown in prose.
+        if (/^wikilinks?$/i.test(target)) continue;
+        expect(basenames, `${note.path} → [[${target}]]`).toContain(target);
+      }
+    }
   });
 
   it("returns null (never throws) when a write fails", async () => {

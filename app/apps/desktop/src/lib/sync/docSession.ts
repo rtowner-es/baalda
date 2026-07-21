@@ -48,6 +48,10 @@ export class SyncManager {
   /** The local user's chosen activity status, broadcast via awareness. */
   private status: ActivityStatus = "online";
   private onStatus?: (status: SyncStatus) => void;
+  private onPending?: (pending: boolean) => void;
+  private onFlushed?: () => void;
+  private onRegistryChanged?: () => void;
+  private registryPullTimer: ReturnType<typeof setTimeout> | null = null;
   private attachments: AttachmentSync | null = null;
 
   // Vault-wide background sync (spec 05): the engine (one WS to /vault-sync)
@@ -60,6 +64,43 @@ export class SyncManager {
   /** UI subscribes here to render the per-note sync indicator. */
   setStatusListener(cb: ((status: SyncStatus) => void) | undefined): void {
     this.onStatus = cb;
+  }
+
+  /**
+   * UI subscribes here for the live save/sync activity of the open note:
+   * `onPending(true)` the instant a local edit is made, `onFlushed()` once the
+   * server has acked everything. Drives "Saving…" → "Synced · just now".
+   */
+  setActivityListeners(cbs: {
+    onPending?: (pending: boolean) => void;
+    onFlushed?: () => void;
+  }): void {
+    this.onPending = cbs.onPending;
+    this.onFlushed = cbs.onFlushed;
+  }
+
+  /**
+   * UI subscribes here to refresh the sidebar tree after the registry catches up
+   * to a teammate's structural change (folder/note create/rename/move/delete).
+   */
+  setRegistryListener(cb: (() => void) | undefined): void {
+    this.onRegistryChanged = cb;
+  }
+
+  /**
+   * A `registry` signal arrived from the vault channel. Debounce a re-pull (a
+   * burst of changes — e.g. a folder move rewriting many rows — coalesces into
+   * one), then tell the UI to refresh the tree.
+   */
+  private handleRegistryChanged(): void {
+    if (this.registryPullTimer) clearTimeout(this.registryPullTimer);
+    this.registryPullTimer = setTimeout(() => {
+      this.registryPullTimer = null;
+      void this.registry
+        .pull()
+        .then(() => this.onRegistryChanged?.())
+        .catch((e) => console.warn("[sync] registry pull failed", e));
+    }, 250);
   }
 
   isEnabled(): boolean {
@@ -135,6 +176,8 @@ export class SyncManager {
       // (view↔edit, lock/unlock). Re-mint its token so the editor becomes
       // read-only/editable live — no reopen (spec 04 §4).
       onAclChanged: () => this.current?.refreshAccess(),
+      // A teammate changed the folder/note structure — re-pull + refresh tree.
+      onRegistryChanged: () => this.handleRegistryChanged(),
     });
     this.vaultEngine.start();
   }
@@ -202,6 +245,8 @@ export class SyncManager {
       docId: mapping.docId,
       vaultId: mapping.vaultId,
       onStatus: this.onStatus,
+      onPending: this.onPending,
+      onFlushed: this.onFlushed,
     });
     this.current = sync;
 
@@ -244,6 +289,9 @@ export class SyncManager {
     if (this.current) {
       this.current.destroy();
       this.current = null;
+      // The closed note can't have outstanding local edits anymore — clear any
+      // lingering "Saving…" so the next note starts clean.
+      this.onPending?.(false);
     }
     if (this.currentLocalAwareness) {
       this.currentLocalAwareness.destroy();

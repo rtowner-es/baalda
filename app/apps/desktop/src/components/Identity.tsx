@@ -67,6 +67,33 @@ export function relativeAgo(ts: number, now: number): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+/**
+ * Pure label for the sync pill. Extracted so the (surprisingly load-bearing)
+ * "Saving…" vs "Synced · just now" logic is unit-testable without a DOM.
+ *
+ * `pending` (local edits not yet acked) wins over the timestamp: while flushing
+ * we show "Saving…"; once acked, the caller has bumped `lastSyncedAt`, so it
+ * reads "Synced · just now" and counts up from there.
+ */
+export function syncBadgeLabel(args: {
+  status: string;
+  pending?: boolean;
+  lastSyncedAt?: number | null;
+  now: number;
+  enabled?: boolean;
+}): string {
+  const { status, pending, lastSyncedAt, now, enabled } = args;
+  if (status === "synced") {
+    if (pending) return "Saving…";
+    return lastSyncedAt != null ? `Synced · ${relativeAgo(lastSyncedAt, now)}` : "Synced";
+  }
+  if (status === "read-only") return "Read-only";
+  if (status === "connecting") return "Syncing…";
+  if (status === "no-access") return "No access";
+  if (status === "error") return "Retrying…";
+  return enabled === false ? "Local only" : "Offline";
+}
+
 function useNowTick(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -81,32 +108,21 @@ export function SyncBadge({
   status,
   enabled,
   lastSyncedAt,
+  pending,
 }: {
   status: string;
   enabled?: boolean;
   /** When set and status is "synced", the badge reads "Synced · 1m ago". */
   lastSyncedAt?: number | null;
+  /** True while local edits are still flushing to the server → "Saving…". */
+  pending?: boolean;
 }) {
-  const now = useNowTick(status === "synced" && lastSyncedAt != null);
-  const label =
-    status === "synced"
-      ? lastSyncedAt != null
-        ? `Synced · ${relativeAgo(lastSyncedAt, now)}`
-        : "Synced"
-      : status === "read-only"
-        ? "Read-only"
-        : status === "connecting"
-          ? "Syncing…"
-          : status === "no-access"
-            ? "No access"
-            : status === "error"
-              ? "Retrying…"
-              : enabled === false
-                ? "Local only"
-                : "Offline";
+  // Only tick the relative clock once we're settled (synced, nothing pending).
+  const now = useNowTick(status === "synced" && !pending && lastSyncedAt != null);
+  const label = syncBadgeLabel({ status, pending, lastSyncedAt, now, enabled });
   return (
-    <span className={`sync-badge ${status}`}>
-      {status === "connecting" ? (
+    <span className={`sync-badge ${status}${pending ? " pending" : ""}`}>
+      {status === "connecting" || (status === "synced" && pending) ? (
         <span className="sync-progress" aria-hidden="true">
           <span className="sync-progress-fill" />
         </span>

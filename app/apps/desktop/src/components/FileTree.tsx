@@ -513,6 +513,13 @@ export function FileTree() {
     if (newPath === oldPath) return;
     try {
       await ipc.renamePath(oldPath, newPath);
+      // Propagate the rename/move to the server (folder subtree or single note;
+      // doc_ids are preserved) so teammates see it live.
+      try {
+        await syncManager.registry.renamePath(oldPath, newPath);
+      } catch (e) {
+        console.warn("[sync] renamePath failed", oldPath, e);
+      }
       // Keep the item's rank (and its subtree's arrangement) across the rename.
       const store = useStore.getState();
       store.setItemOrder(renameInOrder(store.itemOrder, oldPath, newPath));
@@ -563,6 +570,11 @@ export function FileTree() {
       if (from[i] === to[i]) continue;
       try {
         await ipc.renamePath(from[i], to[i]);
+        try {
+          await syncManager.registry.renamePath(from[i], to[i]);
+        } catch (e) {
+          console.warn("[sync] move propagate failed", from[i], e);
+        }
         movedOnDisk = true;
         if (openNote && (openNote.path === from[i] || openNote.path.startsWith(from[i] + "/"))) {
           await useStore.getState().openNoteByPath(openNote.path.replace(from[i], to[i]));
@@ -611,6 +623,13 @@ export function FileTree() {
       const candidate = i === 0 ? name : `${name} ${i}`;
       try {
         const path = await ipc.createFolder(dir, candidate);
+        // Push the folder to the server immediately so teammates see it live and
+        // it can be shared. A subsequent rename propagates via onRename.
+        try {
+          await syncManager.registry.registerFolder(path, candidate);
+        } catch (e) {
+          console.warn("[sync] registerFolder failed", path, e);
+        }
         await refreshAll();
         beginRename(path);
         return;
@@ -623,6 +642,13 @@ export function FileTree() {
   async function handleDelete(node: NodeApi<TreeNode>) {
     try {
       await ipc.deletePath(node.data.path);
+      // Propagate the delete (folder subtree or note) to the server so it
+      // disappears for teammates too.
+      try {
+        await syncManager.registry.deletePath(node.data.path);
+      } catch (e) {
+        console.warn("[sync] deletePath failed", node.data.path, e);
+      }
       const store = useStore.getState();
       store.setItemOrder(removeFromOrder(store.itemOrder, node.data.path));
       if (openNote && (openNote.path === node.data.path || openNote.path.startsWith(node.data.path + "/"))) {

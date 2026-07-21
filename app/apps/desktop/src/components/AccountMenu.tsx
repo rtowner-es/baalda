@@ -176,6 +176,7 @@ function AccountPopover({
   const syncStatus = useStore((s) => s.syncStatus);
   const syncEnabled = useStore((s) => s.syncEnabled);
   const lastSyncedAt = useStore((s) => s.lastSyncedAt);
+  const syncPending = useStore((s) => s.syncPending);
 
   const [creating, setCreating] = useState(false);
   const [orgName, setOrgName] = useState("");
@@ -381,7 +382,12 @@ function AccountPopover({
           </button>
           <div className="menu-row">
             <span className="menu-row-label">Sync</span>
-            <SyncBadge status={syncStatus} enabled={syncEnabled} lastSyncedAt={lastSyncedAt} />
+            <SyncBadge
+              status={syncStatus}
+              enabled={syncEnabled}
+              lastSyncedAt={lastSyncedAt}
+              pending={syncPending}
+            />
           </div>
         </>
       )}

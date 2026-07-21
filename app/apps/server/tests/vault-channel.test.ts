@@ -106,6 +106,25 @@ describe("VaultChannel relay (spec 05 §3.1)", () => {
     expect(live.map((u) => u.docId)).toEqual(["A"]);
   });
 
+  it("tells the client to re-pull on a registry change", async () => {
+    let set = new Set(["A"]);
+    const { channel } = channelWith(() => set);
+    const ws = new FakeWs();
+    channel.handleConnection(ws as never);
+    ws.hello("good");
+    await waitFor(() => ws.controls().some((c) => c.t === "ready"));
+
+    // A teammate created a note "B" — the readable set grew AND a registry frame
+    // is sent so the client re-pulls its tree; the new doc also backfills.
+    set = new Set(["A", "B"]);
+    await channel.publishRegistryChanged("v1");
+    await waitFor(() => ws.controls().some((c) => c.t === "registry"));
+
+    expect(ws.controls().filter((c) => c.t === "registry")).toEqual([{ t: "registry" }]);
+    // Newly-readable "B" is backfilled off the same signal.
+    await waitFor(() => ws.updates().some((u) => u.docId === "B"));
+  });
+
   it("drops a doc when an acl change removes it from the readable set", async () => {
     let set = new Set(["A", "B"]);
     const { channel } = channelWith(() => set);
