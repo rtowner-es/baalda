@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { type BillingPlan } from "../lib/api";
 import { authManager } from "../lib/auth/authManager";
 import * as ipc from "../lib/ipc";
@@ -8,7 +9,7 @@ import { useStore } from "../store";
 const POLL_INTERVAL_MS = 3_000;
 const POLL_BUDGET_MS = 3 * 60 * 1000;
 
-/** Format a plan's amount (minor units) as a compact price, e.g. "$10", "$96". */
+/** Format a plan's amount (minor units) as a compact price, e.g. "$10", "$97". */
 function formatPrice(plan: BillingPlan): string {
   const major = plan.amount / 100;
   try {
@@ -129,7 +130,10 @@ export function UpgradeDialog({ onClose }: { onClose: () => void }) {
     if (!done) setPhase("timeout");
   };
 
-  return (
+  // Portalled to <body> so the fixed backdrop escapes the Settings modal's
+  // containing block (its `.modal` keeps a transform from the rise-in
+  // animation, which would otherwise trap this dialog inside that card).
+  return createPortal(
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal upgrade-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
@@ -262,6 +266,7 @@ export function UpgradeDialog({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

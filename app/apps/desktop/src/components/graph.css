@@ -153,25 +153,25 @@
 }
 
 .graph-state-card {
-  max-width: 340px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-6) var(--sp-7);
+  gap: var(--sp-2);
+  padding: var(--sp-7) var(--sp-8);
   text-align: center;
   /* The backdrop is a dark void in every theme, so these states use fixed
      light-on-dark colors instead of theme text vars (which would be dark, and
      thus invisible, in light mode). A faint glass panel lifts the copy off the
      void so it reads at any zoom. */
-  color: rgba(233, 236, 245, 0.78);
+  color: rgba(233, 236, 245, 0.72);
   font-size: var(--fs-md);
   line-height: var(--lh-body);
-  background: rgba(20, 23, 34, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(10px);
+  background: rgba(22, 25, 37, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px);
 }
 
 .graph-state-card strong {
@@ -183,6 +183,10 @@
   letter-spacing: -0.01em;
 }
 
+.graph-state-card span {
+  max-width: 30ch;
+}
+
 .graph-state-card code {
   font-family: var(--font-mono);
   font-size: 0.9em;
@@ -192,6 +196,34 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   white-space: nowrap;
+}
+
+/* Empty state: a small constellation glyph anchors the copy — nodes + links,
+   a preview of what the graph becomes. */
+.graph-empty {
+  gap: var(--sp-3);
+}
+.graph-empty-glyph {
+  margin-bottom: var(--sp-1);
+  color: #8f84ff;
+}
+.graph-empty-glyph .ge-node {
+  fill: #8f84ff;
+}
+.graph-empty-glyph .ge-node-hub {
+  fill: #a49bff;
+  filter: drop-shadow(0 0 10px rgba(143, 132, 255, 0.7));
+}
+.graph-empty-glyph .ge-node-dim {
+  fill: none;
+  stroke: rgba(143, 132, 255, 0.55);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.graph-empty-glyph .ge-link {
+  stroke: rgba(143, 132, 255, 0.35);
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 /* ============================================================

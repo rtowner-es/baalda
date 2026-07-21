@@ -63,29 +63,39 @@ function WorkspaceFolderPrompt() {
   return (
     <div className="modal-backdrop workspace-folder-backdrop">
       <div className="modal workspace-folder-prompt" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span>
-            Set up <strong>{pending.orgName}</strong>
-          </span>
+        <div className="wf-badge" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.6.8l.9 1.2a2 2 0 0 0 1.6.8H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          </svg>
         </div>
-        <p className="muted">
+        <h2 className="wf-title">
+          Set up <strong>{pending.orgName}</strong>
+        </h2>
+        <p className="wf-desc">
           Choose the local folder this workspace syncs to. Each workspace keeps
           its own folder — separate from your other workspaces.
         </p>
         <div className="workspace-folder-actions">
           <button
-            className="primary hero"
+            className="wf-btn wf-btn-primary"
             disabled={busy}
             onClick={run(() => useStore.getState().chooseWorkspaceFolder())}
           >
-            Open a folder…
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 7a2 2 0 0 1 2-2h3.6a2 2 0 0 1 1.6.8l.9 1.2a2 2 0 0 0 1.6.8H19a2 2 0 0 1 2 2" />
+              <path d="M3 10h16.5a2 2 0 0 1 1.95 2.46l-1.1 5A2 2 0 0 1 18.4 19H5a2 2 0 0 1-2-2z" />
+            </svg>
+            <span>Open a folder…</span>
           </button>
           <button
-            className="secondary"
+            className="wf-btn wf-btn-ghost"
             disabled={busy}
             onClick={run(() => useStore.getState().startEmptyWorkspace())}
           >
-            Start with an empty folder
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>Start with an empty folder</span>
           </button>
         </div>
         {error && <p className="error">{error}</p>}

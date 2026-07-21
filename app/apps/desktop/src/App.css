@@ -3339,13 +3339,103 @@ button.primary.hero:hover:not(:disabled) {
 .workspace-folder-backdrop {
   z-index: 210;
 }
-.workspace-folder-prompt .muted {
-  margin-bottom: var(--sp-5);
+
+/* The workspace setup prompt gets a bespoke, minimal layout rather than the
+   generic modal-header/hero-button treatment: an accent folder badge, tight
+   type hierarchy, and two calm buttons (gradient primary + outlined ghost). */
+.workspace-folder-prompt {
+  width: 400px;
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.wf-badge {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto var(--sp-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-lg);
+}
+.wf-title {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.wf-title strong {
+  font-weight: 600;
+}
+.wf-desc {
+  margin: 0 auto var(--sp-6);
+  max-width: 34ch;
+  color: var(--text-secondary);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
 }
 .workspace-folder-actions {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+}
+.wf-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+.wf-btn svg {
+  flex: none;
+}
+.wf-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.wf-btn-primary {
+  background: var(--accent-gradient);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-sm);
+}
+.wf-btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.wf-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+.wf-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+.wf-btn-ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.wf-btn-ghost:active:not(:disabled) {
+  background: var(--bg-active);
+}
+.workspace-folder-prompt .error {
+  margin: var(--sp-4) 0 0;
 }
 .workspace-folder-prompt .link-btn {
   margin-top: var(--sp-4);

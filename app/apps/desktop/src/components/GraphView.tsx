@@ -1003,7 +1003,18 @@ export function GraphView({ onClose }: { onClose: () => void }) {
         )}
         {showEmpty && (
           <div className="graph-state">
-            <div className="graph-state-card">
+            <div className="graph-state-card graph-empty">
+              <div className="graph-empty-glyph" aria-hidden="true">
+                <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
+                  <line x1="36" y1="36" x2="16" y2="18" className="ge-link" />
+                  <line x1="36" y1="36" x2="58" y2="22" className="ge-link" />
+                  <line x1="36" y1="36" x2="54" y2="56" className="ge-link" />
+                  <circle cx="16" cy="18" r="4" className="ge-node ge-node-dim" />
+                  <circle cx="58" cy="22" r="4" className="ge-node" />
+                  <circle cx="54" cy="56" r="4" className="ge-node" />
+                  <circle cx="36" cy="36" r="7" className="ge-node ge-node-hub" />
+                </svg>
+              </div>
               <strong>Your graph is empty</strong>
               <span>
                 Write a note, then link notes with{" "}
